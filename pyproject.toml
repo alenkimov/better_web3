@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "better-web3"
+version = "1.0"
+description = "Chain, Explorer, Contracts(Multicall, ERC20/ERC721), batch calls and other.."
+authors = ["Alen <alen.kimov@gmail.com>"]
+readme = "README.md"
+packages = [{include = "better_web3"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+web3 = "^6.4.0"
+requests = "^2.31.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
