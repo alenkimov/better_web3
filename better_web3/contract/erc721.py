@@ -39,7 +39,7 @@ class ERC721(Contract):
             self,
             addresses: Iterable[ChecksumAddress],
             block_identifier: BlockIdentifier | None = "latest",
-    ) -> dict[str: int]:
+    ) -> dict[ChecksumAddress: int]:
         """
         If there's a problem with a token_address `0` will be returned for balance
         """

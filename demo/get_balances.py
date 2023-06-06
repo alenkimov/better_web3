@@ -1,5 +1,5 @@
 from eth_utils import from_wei
-from web3.types import Wei
+from web3.types import Wei, ChecksumAddress
 
 from better_web3 import Chain
 from better_web3.utils import to_checksum_addresses
@@ -18,7 +18,7 @@ addresses = to_checksum_addresses(
 )
 
 
-def print_balances(balances: dict[str: Wei], token_symbol: str):
+def print_balances(balances: dict[ChecksumAddress: Wei], token_symbol: str):
     eth_balances = {address: from_wei(balance, "ether") for address, balance in balances.items()}
     for i, (address, balance) in enumerate(eth_balances.items(), start=1):
         print(f"[{i}] [{address}] {balance:.2f} {token_symbol}")

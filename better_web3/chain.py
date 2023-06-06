@@ -223,12 +223,12 @@ class Chain:
     def erc721(self, address) -> ERC721:
         return ERC721(self, address)
 
-    def get_current_block_number(self) -> BlockNumber:
-        return self.w3.eth.block_number
-
     ################################################################################
     # Chain info
     ################################################################################
+
+    def get_current_block_number(self) -> BlockNumber:
+        return self.w3.eth.block_number
 
     @cache
     def get_chain_id(self) -> int:
@@ -909,7 +909,9 @@ class Chain:
                 block_identifier=block_identifier,
             )
 
-    # === Tracing
+    ################################################################################
+    # Tracing
+    ################################################################################
 
     @staticmethod
     def filter_out_errored_traces(

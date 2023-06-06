@@ -40,7 +40,7 @@ class ERC20(Contract):
             self,
             addresses: Iterable[ChecksumAddress],
             block_identifier: BlockIdentifier | None = "latest",
-    ) -> dict[str: Wei]:
+    ) -> dict[ChecksumAddress: Wei]:
         if not addresses:
             return []
         addresses = list(addresses)
