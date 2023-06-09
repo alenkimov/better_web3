@@ -68,5 +68,5 @@ class Explorer:
             abi = json.loads(implementation_info["ABI"])
         return abi
 
-    def get_link_by_txn_hash(self, txn_hash: str):
-        return f"{self.url}/tx/{txn_hash}"
+    def get_link_by_tx_hash(self, tx_hash: str):
+        return f"{self.url}/tx/{tx_hash}"

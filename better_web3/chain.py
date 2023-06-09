@@ -1,4 +1,3 @@
-from enum import Enum
 from functools import wraps
 from typing import (
     Any,
@@ -6,14 +5,15 @@ from typing import (
     Optional,
     Sequence,
     Union,
+    Callable,
 )
 
 import eth_abi
 import requests
 from eth_abi.exceptions import DecodingError
-from eth_account import Account
-from eth_typing import BlockNumber, ChecksumAddress, HexStr, AnyAddress
-from eth_utils import is_checksum_address, to_checksum_address
+from eth_account.signers.local import LocalAccount
+from eth_typing import BlockNumber, ChecksumAddress, HexStr
+from eth_utils import to_checksum_address
 from hexbytes import HexBytes
 from requests.adapters import HTTPAdapter
 from web3 import HTTPProvider, Web3
@@ -32,7 +32,7 @@ from web3.exceptions import (
     TransactionNotFound,
     Web3Exception,
 )
-from web3.middleware import geth_poa_middleware, simple_cache_middleware
+from web3.middleware import geth_poa_middleware
 from web3.types import (
     BlockData,
     BlockIdentifier,
@@ -46,45 +46,17 @@ from web3.types import (
     Wei,
 )
 
-
-from .exceptions import (
-    BatchCallFunctionFailed,
-    ChainIdIsRequired,
-    FromAddressNotFound,
-    GasLimitExceeded,
-    InsufficientFunds,
-    InvalidNonce,
-    NonceTooHigh,
-    NonceTooLow,
-    ReplacementTransactionUnderpriced,
-    SenderAccountNotFoundInNode,
-    TransactionAlreadyImported,
-    TransactionGasPriceTooLow,
-    TransactionQueueLimitReached,
-    UnknownAccount,
-)
-from .explorer import Explorer
 from .contract import Contract, Multicall, ERC20, ERC721
+from .enums import TxSpeed
+from .exceptions import error_msg_to_exception, BatchCallFunctionFailed
+from .explorer import Explorer
+from .gas_station import GasStation
+from .models import NativeToken
 from .typing import TxHash
 from .utils import cache, chunks
 
 
-NULL_ADDRESS: str = "0x" + "0" * 40
-GAS_CALL_DATA_ZERO_BYTE = 4
-GAS_CALL_DATA_BYTE = 16  # 68 before Istanbul
-
-
-class TxSpeed(Enum):
-    SLOWEST = 0
-    VERY_SLOW = 1
-    SLOW = 2
-    NORMAL = 3
-    FAST = 4
-    VERY_FAST = 5
-    FASTEST = 6
-
-
-def tx_with_exception_handling(func):
+def tx_with_exception_handling(func: Callable) -> Callable:
     """
     Parity / OpenEthereum
         - https://github.com/openethereum/openethereum/blob/main/rpc/src/v1/helpers/errors.rs
@@ -94,41 +66,7 @@ def tx_with_exception_handling(func):
     Comparison
         - https://gist.github.com/kunal365roy/3c37ac9d1c3aaf31140f7c5faa083932
 
-    :param func:
-    :return:
     """
-    error_with_exception: dict[str, Exception] = {
-        "EIP-155": ChainIdIsRequired,
-        "Transaction with the same hash was already imported": TransactionAlreadyImported,
-        # https://github.com/ethereum/go-ethereum/blob/eaccdba4ab310e3fb98edbc4b340b5e7c4d767fd/core/tx_pool.go#L72
-        "replacement transaction underpriced": ReplacementTransactionUnderpriced,
-        # https://github.com/openethereum/openethereum/blob/f1dc6821689c7f47d8fd07dfc0a2c5ad557b98ec/crates/rpc/src/v1/helpers/errors.rs#L374
-        "There is another transaction with same nonce in the queue": ReplacementTransactionUnderpriced,
-        "There are too many transactions in the queue. Your transaction was dropped due to limit. Try increasing "
-        # https://github.com/openethereum/openethereum/blob/f1dc6821689c7f47d8fd07dfc0a2c5ad557b98ec/crates/rpc/src/v1/helpers/errors.rs#L380
-        "the fee": TransactionQueueLimitReached,
-        # https://github.com/ethereum/go-ethereum/blob/eaccdba4ab310e3fb98edbc4b340b5e7c4d767fd/core/tx_pool.go#L68
-        "txpool is full": TransactionQueueLimitReached,
-        # https://github.com/ethereum/go-ethereum/blob/eaccdba4ab310e3fb98edbc4b340b5e7c4d767fd/core/tx_pool.go#L64
-        "transaction underpriced": TransactionGasPriceTooLow,
-        # https://github.com/openethereum/openethereum/blob/f1dc6821689c7f47d8fd07dfc0a2c5ad557b98ec/crates/rpc/src/v1/helpers/errors.rs#L386
-        "Transaction gas price is too low": TransactionGasPriceTooLow,
-        "from not found": FromAddressNotFound,
-        "correct nonce": InvalidNonce,
-        # https://github.com/ethereum/go-ethereum/blob/bbfb1e4008a359a8b57ec654330c0e674623e52f/core/error.go#L46
-        "nonce too low": NonceTooLow,
-        # https://github.com/ethereum/go-ethereum/blob/bbfb1e4008a359a8b57ec654330c0e674623e52f/core/error.go#L46
-        "nonce too high": NonceTooHigh,
-        # https://github.com/openethereum/openethereum/blob/f1dc6821689c7f47d8fd07dfc0a2c5ad557b98ec/crates/rpc/src/v1/helpers/errors.rs#L389
-        "insufficient funds": InsufficientFunds,
-        "doesn't have enough funds": InsufficientFunds,
-        "sender account not recognized": SenderAccountNotFoundInNode,
-        "unknown account": UnknownAccount,
-        # Geth
-        "exceeds block gas limit": GasLimitExceeded,
-        # https://github.com/openethereum/openethereum/blob/f1dc6821689c7f47d8fd07dfc0a2c5ad557b98ec/crates/rpc/src/v1/helpers/errors.rs#L392
-        "exceeds current gas limit": GasLimitExceeded,
-    }
 
     @wraps(func)
     def with_exception_handling(*args, **kwargs):
@@ -136,7 +74,7 @@ def tx_with_exception_handling(func):
             return func(*args, **kwargs)
         except (Web3Exception, ValueError) as exc:
             str_exc = str(exc).lower()
-            for reason, custom_exception in error_with_exception.items():
+            for reason, custom_exception in error_msg_to_exception.items():
                 if reason.lower() in str_exc:
                     raise custom_exception(str(exc)) from exc
             raise exc
@@ -148,45 +86,44 @@ class Chain:
     def __init__(
             self,
             rpc: str,
-            explorer: Optional[Explorer] = None,
-            multicall_v3_address: Optional[AnyAddress or str] = None,
-            use_caching_middleware: bool = True,
+            explorer: Explorer = None,
+            gas_station: GasStation = None,
+            native_token: NativeToken = None,
+            multicall_v3_address: ChecksumAddress | str = None,
             use_poa_middleware: bool = True,
             provider_timeout: int = 15,
             slow_provider_timeout: int = 60,
             retry_count: int = 3,
             batch_request_max_size: int = 500,
     ):
-        self.rpc = rpc
+        self._rpc = rpc
+        self.explorer = explorer
+        self.gas_station = gas_station
+        self.native_token = native_token
+
         self.http_session = self._prepare_http_session(retry_count)
         self.timeout = provider_timeout
         self.slow_timeout = slow_provider_timeout
-        self.w3_provider = HTTPProvider(
-            self.rpc,
-            request_kwargs={"timeout": provider_timeout},
-            session=self.http_session,
-        )
-        self.w3_slow_provider = HTTPProvider(
-            self.rpc,
-            request_kwargs={"timeout": slow_provider_timeout},
-            session=self.http_session,
-        )
-        self.w3: Web3 = Web3(self.w3_provider)
-        self.slow_w3: Web3 = Web3(self.w3_slow_provider)
+
+        self.w3_provider = self._create_http_provider(provider_timeout)
+        self.w3_slow_provider = self._create_http_provider(slow_provider_timeout)
+
+        self.w3 = Web3(provider=self.w3_provider)
+        self.slow_w3 = Web3(provider=self.w3_slow_provider)
         self.batch_request_max_size = batch_request_max_size
 
-        self.explorer = explorer
+        self.multicall = Multicall(chain=self, address=multicall_v3_address)
 
-        self.multicall = Multicall(self, multicall_v3_address)
-
-        self.use_caching_middleware = use_caching_middleware
-        self.use_poa_middleware = use_poa_middleware
-        if self.use_poa_middleware:
+        if use_poa_middleware:
             self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
             self.slow_w3.middleware_onion.inject(geth_poa_middleware, layer=0)
-        if self.use_caching_middleware:
-            self.w3.middleware_onion.add(simple_cache_middleware)
-            self.slow_w3.middleware_onion.add(simple_cache_middleware)
+
+    def _create_http_provider(self, timeout: int) -> HTTPProvider:
+        return HTTPProvider(
+            self._rpc,
+            request_kwargs={"timeout": timeout},
+            session=self.http_session,
+        )
 
     def __repr__(self):
         return f"Chain({self.w3.provider})"
@@ -210,6 +147,10 @@ class Chain:
         session.mount("https://", adapter)
         return session
 
+    @property
+    def rpc(self):
+        return self._rpc
+
     ################################################################################
     # Contract creation shortcuts
     ################################################################################
@@ -230,20 +171,17 @@ class Chain:
     def get_current_block_number(self) -> BlockNumber:
         return self.w3.eth.block_number
 
+    @property
     @cache
-    def get_chain_id(self) -> int:
-        """
-        :return: ChainId returned by the RPC `eth_chainId` method. It should never change, so it's cached.
-        """
-        return int(self.w3.eth.chain_id)
+    def chain_id(self) -> int:
+        return self.w3.eth.chain_id
 
+    @property
     @cache
-    def get_client_version(self) -> str:
-        """
-        :return: RPC version information
-        """
+    def client_version(self) -> str:
         return self.w3.client_version
 
+    @property
     @cache
     def is_eip1559_supported(self) -> bool:
         """
@@ -256,123 +194,125 @@ class Chain:
             return False
 
     ################################################################################
-    # Helpers
+    # Shortcuts
     ################################################################################
 
-    def get_nonce(
-            self,
-            address: ChecksumAddress,
-            block_identifier: Optional[BlockIdentifier] = "latest",
-    ):
+    def get_nonce(self, address: ChecksumAddress) -> int:
+        return self.w3.eth.get_transaction_count(address)
+
+    def get_gas_price(self) -> Wei:
+        return self.w3.eth.gas_price
+
+    def is_contract(self, contract_address: ChecksumAddress) -> bool:
+        return bool(self.w3.eth.get_code(contract_address))
+
+    # def calculate_gas(self):
+    #     pending_transactions = self.w3.provider.make_request("parity_pendingTransactions", [])
+    #     gas_prices = []
+    #     gases = []
+    #     for tx in pending_transactions["result"[:10]]:
+    #         gas_prices.append(int((tx["gasPrice"]), 16))
+    #         gases.append(int((tx["gas"]), 16))
+    #
+    #     return statistics.mean(gas_prices)
+
+    # def _apply_eip1559_fee_settings(
+    #         self,
+    #         max_fee_per_gas: Wei,
+    #         max_priority_fee_per_gas: Wei,
+    # ) -> tuple[Wei, Wei]:
+    #     if self.fee_settings.max_fee_per_gas.type_ == "multiplier":
+    #         max_fee_per_gas *= self.fee_settings.max_fee_per_gas.value
+    #         max_fee_per_gas = int(max_fee_per_gas)
+    #     elif self.fee_settings.max_fee_per_gas.type_ == "constant":
+    #         max_fee_per_gas = Web3.to_wei(self.fee_settings.max_fee_per_gas.value, "gwei")
+    #
+    #     if self.fee_settings.max_priority_fee_per_gas.type_ == "multiplier":
+    #         max_priority_fee_per_gas *= self.fee_settings.max_priority_fee_per_gas.value
+    #         max_priority_fee_per_gas = int(max_priority_fee_per_gas)
+    #     elif self.fee_settings.max_priority_fee_per_gas.type_ == "constant":
+    #         max_priority_fee_per_gas = Web3.to_wei(self.fee_settings.max_priority_fee_per_gas.value, "gwei")
+    #
+    #     return max_fee_per_gas, max_priority_fee_per_gas
+
+    def estimate_eip1559_fees(self, tx_speed: TxSpeed = TxSpeed.NORMAL) -> tuple[int, int]:
         """
-        Get nonce for account. `getTransactionCount` is the only method for what `pending` is currently working
-        (Geth and Parity)
-        """
-        return self.w3.eth.get_transaction_count(address, block_identifier=block_identifier)
+        Check https://github.com/ethereum/execution-apis/blob/main/src/eth/fee_market.yaml
 
-    def estimate_gas(
-            self,
-            to: str,
-            from_: Optional[str] = None,
-            value: Optional[int] = None,
-            data: Optional[bytes | HexStr] = None,
-            gas: Optional[int] = None,
-            gas_price: Optional[int] = None,
-            block_identifier: Optional[BlockIdentifier] = None,
-    ) -> int:
-        """
-        Estimate gas calling `eth_estimateGas`
-
-        :param block_identifier: Be careful, `Geth` does not support `pending` when estimating
-        :return: Amount of gas needed for transaction
-        :raises: ValueError
-        """
-        tx: TxParams = {"to": to}
-        if from_:
-            tx["from"] = from_
-        if value:
-            tx["value"] = value
-        if data:
-            tx["data"] = data
-        if gas:
-            tx["gas"] = gas
-        if gas_price:
-            tx["gasPrice"] = gas_price
-        try:
-            return self.w3.eth.estimate_gas(tx, block_identifier=block_identifier)
-        except (Web3Exception, ValueError):
-            if (
-                    block_identifier is not None
-            ):  # Geth does not support setting `block_identifier`
-                return self.w3.eth.estimate_gas(tx, block_identifier=None)
-            else:
-                raise
-
-    @staticmethod
-    def estimate_data_gas(data: bytes):
-        if isinstance(data, str):
-            data = HexBytes(data)
-
-        gas = 0
-        for byte in data:
-            if not byte:
-                gas += GAS_CALL_DATA_ZERO_BYTE
-            else:
-                gas += GAS_CALL_DATA_BYTE
-        return gas
-
-    def estimate_fee_eip1559(
-            self, tx_speed: TxSpeed = TxSpeed.NORMAL
-    ) -> tuple[int, int]:
-        """
-        Check https://github.com/ethereum/execution-apis/blob/main/src/eth/fee_market.json#L15
-
-        :return: Tuple[BaseFeePerGas, MaxPriorityFeePerGas]
+        :return: Tuple[maxFeePerGas, MaxPriorityFeePerGas]
         :raises: ValueError if not supported on the network
         """
-        if tx_speed == TxSpeed.SLOWEST:
-            percentile = 0
-        elif tx_speed == TxSpeed.VERY_SLOW:
-            percentile = 10
-        elif tx_speed == TxSpeed.SLOW:
-            percentile = 25
-        elif tx_speed == TxSpeed.NORMAL:
-            percentile = 50
-        elif tx_speed == TxSpeed.FAST:
-            percentile = 75
-        elif tx_speed == TxSpeed.VERY_FAST:
-            percentile = 90
-        elif tx_speed == TxSpeed.FASTEST:
-            percentile = 100
-
+        tx_speed_percentiles = {
+            TxSpeed.SLOWEST: 0,
+            TxSpeed.VERY_SLOW: 10,
+            TxSpeed.SLOW: 25,
+            TxSpeed.NORMAL: 50,
+            TxSpeed.FAST: 75,
+            TxSpeed.VERY_FAST: 90,
+            TxSpeed.FASTEST: 100
+        }
+        percentile = tx_speed_percentiles[tx_speed]
         result = self.w3.eth.fee_history(1, "latest", reward_percentiles=[percentile])
         # Get next block `base_fee_per_gas`
         base_fee_per_gas = result["baseFeePerGas"][-1]
         max_priority_fee_per_gas = result["reward"][0][0]
-        return base_fee_per_gas, max_priority_fee_per_gas
+        max_fee_per_gas = base_fee_per_gas + max_priority_fee_per_gas
+        return max_fee_per_gas, max_priority_fee_per_gas
 
     def set_eip1559_fees(
-            self, tx: TxParams, tx_speed: TxSpeed = TxSpeed.NORMAL
+            self,
+            tx: TxParams,
+            max_fee_per_gas: Wei = None,
+            max_priority_fee_per_gas: Wei = None,
     ) -> TxParams:
         """
         :return: TxParams in EIP1559 format
         :raises: ValueError if EIP1559 not supported
         """
-        base_fee_per_gas, max_priority_fee_per_gas = self.estimate_fee_eip1559(tx_speed)
         tx = dict(tx)  # Don't modify provided tx
         if "gasPrice" in tx:
             del tx["gasPrice"]
 
         if "chainId" not in tx:
-            tx["chainId"] = self.get_chain_id()
+            tx["chainId"] = self.chain_id
 
+        tx["maxFeePerGas"] = max_fee_per_gas
         tx["maxPriorityFeePerGas"] = max_priority_fee_per_gas
-        tx["maxFeePerGas"] = base_fee_per_gas + max_priority_fee_per_gas
         return tx
+
+    def build_transaction(
+            self,
+            contract_function: ContractFunction,
+            *,
+            gas: int,
+            from_: ChecksumAddress = None,
+            gas_price: Wei = None,
+            nonce: Nonce = None,
+    ) -> TxParams:
+
+        tx_params: TxParams = {
+            "gas": gas,
+            "chainId": self.chain_id,
+        }
+
+        if from_ is not None:
+            tx_params["from"] = from_
+
+        if nonce is not None:
+            tx_params["nonce"] = nonce
+        elif from_ is not None:
+            tx_params["nonce"] = self.get_nonce(from_)
+        else:
+            raise ValueError("Specify at least one of the two values: nonce or from_")
+
+        if gas_price is not None:
+            tx_params["gasPrice"] = gas_price
+
+        return contract_function.build_transaction(tx_params)
 
     def get_balance(
             self,
-            address: AnyAddress,
+            address: ChecksumAddress,
             block_identifier: Optional[BlockIdentifier] = None,
     ):
         address = to_checksum_address(address)
@@ -380,7 +320,7 @@ class Chain:
 
     def get_balances(
             self,
-            addresses: Iterable[AnyAddress],
+            addresses: Iterable[ChecksumAddress],
             block_identifier: Optional[BlockIdentifier] = None,
     ) -> dict[str: Wei]:
         if not addresses:
@@ -399,7 +339,6 @@ class Chain:
             for i, address in enumerate(addresses)
         ]
         balances = self.raw_batch_request(payload)
-        # TODO Здесь преобразование не работает
         return {address: int(balance, 16) for address, balance in zip(addresses, balances)}
 
     def get_transaction(self, tx_hash: TxHash) -> Optional[TxData]:
@@ -426,21 +365,9 @@ class Chain:
             for raw_tx in results
         ]
 
-    def get_transaction_receipt(
-            self, txn_hash: TxHash, timeout=None
-    ) -> Optional[TxReceipt]:
+    def get_transaction_receipt(self, tx_hash: TxHash) -> TxReceipt | None:
         try:
-            if not timeout:
-                tx_receipt = self.w3.eth.get_transaction_receipt(txn_hash)
-            else:
-                try:
-                    tx_receipt = self.w3.eth.wait_for_transaction_receipt(
-                        txn_hash, timeout=timeout
-                    )
-                except TimeExhausted:
-                    return None
-
-            # Parity returns tx_receipt even is tx is still pending, so we check `blockNumber` is not None
+            tx_receipt = self.w3.eth.get_transaction_receipt(tx_hash)
             return (
                 tx_receipt
                 if tx_receipt and tx_receipt["blockNumber"] is not None
@@ -449,12 +376,35 @@ class Chain:
         except TransactionNotFound:
             return None
 
+    def wait_for_transaction_receipt(
+            self, tx_hash: TxHash, timeout: float = 120, poll_latency: float = 0.1
+    ) -> TxReceipt | None:
+        try:
+            tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout, poll_latency)
+            return (
+                tx_receipt
+                if tx_receipt and tx_receipt["blockNumber"] is not None
+                else None
+            )
+        except (TimeExhausted, TransactionNotFound):
+            return None
+
     def get_transaction_receipts(
             self,
-            txn_hashes: Sequence[TxHash],
-    ) -> list[Optional[TxReceipt]]:
-        if not txn_hashes:
-            return []
+            tx_hashes: Iterable[TxHash],
+    ) -> dict[TxHash: TxReceipt | None]:
+        """
+        Retrieves transaction receipts for the given transaction hashes.
+
+        Args:
+            tx_hashes (Iterable[TxHash]): Iterable of transaction hashes.
+
+        Returns:
+            dict[TxHash, Optional[TxReceipt]]: A dictionary where the keys are transaction hashes (TxHash)
+            and the values are the corresponding transaction receipts (TxReceipt) or None.
+        """
+        if not tx_hashes:
+            return {}
         payload = [
             {
                 "id": i,
@@ -462,16 +412,15 @@ class Chain:
                 "method": "eth_getTransactionReceipt",
                 "params": [HexBytes(tx_hash).hex()],
             }
-            for i, tx_hash in enumerate(txn_hashes)
+            for i, tx_hash in enumerate(tx_hashes)
         ]
         results = self.raw_batch_request(payload)
-        receipts = []
-        for tx_receipt in results:
-            # Parity returns tx_receipt even is tx is still pending, so we check `blockNumber` is not None
+        receipts = {}
+        for tx_hash, tx_receipt in zip(tx_hashes, results):
             if tx_receipt and tx_receipt["blockNumber"] is not None:
-                receipts.append(receipt_formatter(tx_receipt))
+                receipts[tx_hash] = receipt_formatter(tx_receipt)
             else:
-                receipts.append(None)
+                receipts[tx_hash] = None
         return receipts
 
     def get_block(
@@ -527,166 +476,50 @@ class Chain:
                 blocks.append(None)
         return blocks
 
-    def is_contract(self, contract_address: ChecksumAddress) -> bool:
-        return bool(self.w3.eth.get_code(contract_address))
+    def sign_and_send_transaction(
+            self, account: LocalAccount, transaction_dict: TxParams
+    ) -> str:
+        signed_tx = account.sign_transaction(transaction_dict)
+        tx_hash = self._send_raw_transaction(signed_tx.rawTransaction)
+        return tx_hash.hex()
 
     @tx_with_exception_handling
-    def send_transaction(self, transaction_dict: TxParams) -> HexBytes:
+    def _send_transaction(self, transaction_dict: TxParams) -> HexBytes:
         return self.w3.eth.send_transaction(transaction_dict)
 
     @tx_with_exception_handling
-    def send_raw_transaction(self, raw_transaction: bytes | HexStr) -> HexBytes:
+    def _send_raw_transaction(self, raw_transaction: bytes | HexStr) -> HexBytes:
         return self.w3.eth.send_raw_transaction(bytes(raw_transaction))
 
-    def send_unsigned_transaction(
-            self,
-            tx: TxParams,
-            private_key: Optional[str] = None,
-            public_key: Optional[str] = None,
-            retry: bool = False,
-            block_identifier: Optional[BlockIdentifier] = "pending",
-    ) -> HexBytes:
+    def check_tx_with_confirmations(self, tx_hash: TxHash, confirmations: int) -> bool:
         """
-        Send a tx using an unlocked public key in the node or a private key. Both `public_key` and
-        `private_key` cannot be `None`
+        Check the transaction hash and ensure it has the required number of confirmations.
 
-        :param tx:
-        :param private_key:
-        :param public_key:
-        :param retry: Retry if a problem with nonce is found
-        :param block_identifier: For nonce calculation, recommended is `pending`
-        :return: tx hash
-        """
+        Args:
+            tx_hash (TxHash): Hash of the transaction.
+            confirmations (int): Minimum number of confirmations required.
 
-        # TODO Refactor this method, it's not working well with new version of the nodes
-        if private_key:
-            address = Account.from_key(private_key).address
-        elif public_key:
-            address = public_key
-        else:
-            raise ValueError(
-                "Ethereum account was not configured or unlocked in the node:"
-                " no ethereum account provided. Need a public_key or private_key"
-            )
-
-        if tx.get("nonce") is None:
-            tx["nonce"] = self.get_nonce(
-                address, block_identifier=block_identifier
-            )
-
-        number_errors = 5
-        while number_errors >= 0:
-            try:
-                if private_key:
-                    signed_tx = self.w3.eth.account.sign_transaction(
-                        tx, private_key=private_key
-                    )
-                    # TODO logger.debug
-                    # f"Sending {tx['value']} wei from {address} to {tx['to']}"
-                    try:
-                        return self.send_raw_transaction(signed_tx.rawTransaction)
-                    except TransactionAlreadyImported as e:
-                        # Sometimes Parity 2.2.11 fails with Transaction already imported, even if it's not, but it's
-                        # processed
-                        tx_hash = signed_tx.hash
-                        # TODO logger.error
-                        # f"Transaction with tx-hash={tx_hash.hex()} already imported: {str(e)}"
-                        return tx_hash
-                elif public_key:
-                    tx["from"] = address
-                    return self.send_transaction(tx)
-            except ReplacementTransactionUnderpriced as e:
-                if not retry or not number_errors:
-                    raise e
-                current_nonce = tx["nonce"]
-                tx["nonce"] = max(
-                    current_nonce + 1,
-                    self.get_nonce(
-                        address, block_identifier=block_identifier
-                    ),
-                )
-                # TODO logger.error
-                # f"Tx with nonce={current_nonce} was already sent for address={address}, retrying with nonce={tx['nonce']}"
-
-            except InvalidNonce as e:
-                if not retry or not number_errors:
-                    raise e
-                # TODO logger.error
-                # f"address={address} Tx with invalid nonce={tx['nonce']}, retrying recovering nonce again"
-                tx["nonce"] = self.get_nonce(
-                    address, block_identifier=block_identifier
-                )
-                number_errors -= 1
-
-    def send_eth_to(
-            self,
-            private_key: str,
-            to: str,
-            gas_price: int,
-            value: Wei,
-            gas: Optional[int] = None,
-            nonce: Optional[int] = None,
-            retry: bool = False,
-            block_identifier: Optional[BlockIdentifier] = "pending",
-    ) -> bytes:
-        """
-        Send ether using configured account
-
-        :param private_key: to
-        :param to: to
-        :param gas_price: gas_price
-        :param value: value(wei)
-        :param gas: gas, defaults to 22000
-        :param retry: Retry if a problem is found
-        :param nonce: Nonce of sender account
-        :param block_identifier: Block identifier for nonce calculation
-        :return: tx_hash
-        """
-
-        assert is_checksum_address(to)
-
-        account = Account.from_key(private_key)
-
-        tx: TxParams = {
-            "from": account.address,
-            "to": to,
-            "value": value,
-            "gas": gas or Wei(self.estimate_gas(to, account.address, value)),
-            "gasPrice": Wei(gas_price),
-            "chainId": self.get_chain_id(),
-        }
-
-        if nonce is not None:
-            tx["nonce"] = Nonce(nonce)
-
-        return self.send_unsigned_transaction(
-            tx, private_key=private_key, retry=retry, block_identifier=block_identifier
-        )
-
-    def check_tx_with_confirmations(
-            self, tx_hash: TxHash, confirmations: int
-    ) -> bool:
-        """
-        Check tx hash and make sure it has the confirmations required
-
-        :param tx_hash: Hash of the tx
-        :param confirmations: Minimum number of confirmations required
-        :return: True if tx was mined with the number of confirmations required, False otherwise
+        Returns:
+            bool: True if the transaction was mined with the specified number of confirmations,
+                  False otherwise.
         """
         tx_receipt = self.get_transaction_receipt(tx_hash)
+
         if not tx_receipt or tx_receipt["blockNumber"] is None:
-            # If `tx_receipt` exists but `blockNumber` is `None`, tx is still pending (just Parity)
+            # If `tx_receipt` exists but `blockNumber` is `None`,
+            # the transaction is still pending (only for Parity).
             return False
         else:
-            return (
-                           self.w3.eth.block_number - tx_receipt["blockNumber"]
-                   ) >= confirmations
+            block_number = self.w3.eth.block_number
+            confirmations_count = block_number - tx_receipt["blockNumber"]
+
+            return confirmations_count >= confirmations
 
     ################################################################################
     # Batch call
     ################################################################################
 
-    def _batch_call_custom(
+    def _custom_batch_call(
             self,
             payloads: Iterable[dict[str, Any]],
             raise_exception: bool = True,
@@ -694,27 +527,40 @@ class Chain:
             batch_size: Optional[int] = None,
     ) -> list[Optional[Any]]:
         """
-        Do batch requests of multiple contract calls (`eth_call`)
+        Perform batch requests for multiple contract calls (`eth_call`).
 
-        :param payloads: Iterable of Dictionaries with at least {'data': '<hex-string>',
-            'output_type': <solidity-output-type>, 'to': '<checksummed-address>'}. `from` can also be provided and if
-            `fn_name` is provided it will be used for debugging purposes
-        :param raise_exception: If False, exception will not be raised if there's any problem and instead `None` will
-            be returned as the value
-        :param block_identifier: `latest` by default
-        :param batch_size: If `payload` length is bigger than size, it will be split into smaller chunks before
-            sending to the server
-        :return: List with the ABI decoded return values
-        :raises: ValueError if raise_exception=True
+        Args:
+            payloads (Iterable[dict[str, Any]]): Iterable of dictionaries with at least the following keys:
+                - 'data': Hex string representing the data for the contract call.
+                - 'output_type': Solidity output type.
+                - 'to': Checksummed address of the contract.
+                'from' (optional): The sender's address for the contract call.
+                'fn_name' (optional): Function name for debugging purposes.
+
+            raise_exception (bool): If False, exceptions will not be raised in case of any problem,
+                and instead `None` will be returned as the value. Default is True.
+
+            block_identifier (Optional[BlockIdentifier]): The block identifier to use for the contract call.
+                It can be an integer block number or the string "latest". Default is "latest".
+
+            batch_size (Optional[int]): If the length of `payloads` is larger than `batch_size`, it will be split
+                into smaller chunks before sending to the server. Default is None.
+
+        Returns:
+            list[Optional[Any]]: List containing the ABI decoded return values.
+
+        Raises:
+            ValueError: If `raise_exception` is True and there is an error during the batch call.
+
         """
         if not payloads:
             return []
 
         queries = []
         for i, payload in enumerate(payloads):
-            assert "data" in payload, "`data` not present"
-            assert "to" in payload, "`to` not present"
-            assert "output_type" in payload, "`output-type` not present"
+            required_keys = ["data", "to", "output_type"]
+            missing_keys = [key for key in required_keys if key not in payload]
+            assert not missing_keys, f"Missing keys in payload: {missing_keys}"
 
             query_params = {"to": payload["to"], "data": payload["data"]}
             if "from" in payload:
@@ -741,19 +587,17 @@ class Chain:
                 self.rpc, json=chunk, timeout=self.slow_timeout
             )
             if not response.ok:
-                raise ConnectionError(
-                    f"Error connecting to {self.rpc}: {response.text}"
-                )
+                raise ConnectionError(f"Error connecting to {self.rpc}: {response.text}")
 
             results = response.json()
 
-            # If there's an error some nodes return a json instead of a list
+            # If there's an error, some nodes return a JSON instead of a list
             if isinstance(results, dict) and "error" in results:
                 raise ValueError(f"Batch call custom problem with payload={chunk}, result={results})")
 
             all_results.extend(results)
 
-        return_values: list[Optional[Any]] = []
+        return_values = []
         errors = []
         for payload, result in zip(
                 payloads, sorted(all_results, key=lambda x: x["id"])
@@ -765,16 +609,11 @@ class Chain:
             else:
                 output_type = payload["output_type"]
                 try:
-                    decoded_values = eth_abi.decode(
-                        output_type, HexBytes(result["result"])
-                    )
+                    decoded_values = eth_abi.decode(output_type, HexBytes(result["result"]))
                     normalized_data = map_abi_data(
                         BASE_RETURN_NORMALIZERS, output_type, decoded_values
                     )
-                    if len(normalized_data) == 1:
-                        return_values.append(normalized_data[0])
-                    else:
-                        return_values.append(normalized_data)
+                    return_values.append(normalized_data[0] if len(normalized_data) == 1 else normalized_data)
                 except (DecodingError, OverflowError):
                     fn_name = payload.get("fn_name", HexBytes(payload["data"]).hex())
                     errors.append(f"`{fn_name}`: DecodingError, cannot decode")
@@ -825,7 +664,7 @@ class Chain:
                 payload["from"] = from_address
             payloads.append(payload)
 
-        return self._batch_call_custom(
+        return self._custom_batch_call(
             payloads, raise_exception=raise_exception, block_identifier=block_identifier
         )
 
@@ -835,15 +674,20 @@ class Chain:
             batch_size: Optional[int] = None
     ) -> Iterable[Optional[dict[str, Any]]]:
         """
-        Perform a raw batch JSON RPC call
+        Perform a raw batch JSON RPC call.
 
-        :param payload: Batch request payload. Make sure all provided `ids` inside the payload are different
-        :param batch_size: If `payload` length is bigger than size, it will be split into smaller chunks before
-            sending to the server
-        :return:
-        :raises: ValueError
+        Args:
+            payload (list[dict[str, Any]]): Batch request payload. Make sure all provided `ids` inside the payload are different.
+            batch_size (Optional[int]): If the length of `payload` is larger than `batch_size`, it will be split into smaller
+                chunks before sending to the server. Default is None.
+
+        Yields:
+            Optional[dict[str, Any]]: Iterable of batch request results. Each result is a dictionary.
+
+        Raises:
+            ValueError: If there is a problem during the raw batch request.
+
         """
-
         batch_size = batch_size or self.batch_request_max_size
 
         all_results = []
@@ -853,13 +697,15 @@ class Chain:
             )
 
             if not response.ok:
-                raise ValueError(
-                    f"Problem doing raw batch request with payload={chunk}"
-                    f" status_code={response.status_code} result={response.content}")
+                error_message = (f"Problem doing raw batch request with payload={chunk}"
+                                 f"\nstatus_code={response.status_code} result={response.content}")
+                if response.status_code == 521:
+                    error_message += "\nTry to change provider (rpc)"
+                raise ValueError(error_message)
 
             results = response.json()
 
-            # If there's an error some nodes return a json instead of a list
+            # If there's an error, some nodes return a JSON instead of a list
             if isinstance(results, dict) and "error" in results:
                 raise ValueError(f"Batch request problem with payload={chunk}, result={results})")
 
@@ -873,27 +719,40 @@ class Chain:
 
     def batch_call(
             self,
-            contract_functions: Sequence[ContractFunction],
+            contract_functions: list[ContractFunction],
             from_address: Optional[ChecksumAddress] = None,
             raise_exception: bool = True,
-            force_batch_call: bool = False,
-            block_identifier: Optional[BlockIdentifier] = "latest",
+            use_multicall: bool = True,
+            block_identifier: Optional[BlockIdentifier] = "latest"
     ) -> list[Optional[Union[bytes, Any]]]:
         """
-        Call multiple functions. ``Multicall`` contract by MakerDAO will be used by default if available
+        Call multiple functions and return the results.
 
-        :param contract_functions:
-        :param from_address: Only available when ``Multicall`` is not used
-        :param raise_exception: If ``True``, raise ``BatchCallException`` if one of the calls fails
-        :param force_batch_call: If ``True``, ignore multicall and always use batch calls to get the
-            result (less optimal). If ``False``, more optimal way will be tried.
-        :param block_identifier:
-        :return: List of elements decoded to their types, ``None`` if they cannot be decoded and
-            bytes if a revert error is returned and ``raise_exception=False``
-        :raises: BatchCallException
+        Args:
+            contract_functions (list[ContractFunction]): The list of contract functions to call.
+            from_address (Optional[ChecksumAddress]): The address from which the calls are made.
+                Only available when `Multicall` is not used.
+            raise_exception (bool): If True, raise `BatchCallException` if one of the calls fails.
+            use_multicall (bool): If False, ignore multicall and always use batch calls to get the results
+                (less optimal). If True, a more optimal way will be tried.
+            block_identifier (Optional[BlockIdentifier]): The identifier of the block to query.
+                Defaults to "latest".
+
+        Returns:
+            list[Optional[Union[bytes, Any]]]: A list of elements decoded to their respective types.
+                If decoding is not possible, None is returned.
+                If a revert error is returned and `raise_exception` is False, bytes are returned.
+
+        Raises:
+            BatchCallException: If `raise_exception` is True and one of the calls fails.
         """
-        if self.multicall and not force_batch_call:  # Multicall is more optimal
-            return [
+        results = []
+
+        if not contract_functions:
+            return results
+
+        if self.multicall and use_multicall:
+            results = [
                 result.return_data_decoded
                 for result in self.multicall.try_aggregate(
                     contract_functions,
@@ -902,12 +761,14 @@ class Chain:
                 )
             ]
         else:
-            return self._batch_call(
+            results = self._batch_call(
                 contract_functions,
                 from_address=from_address,
                 raise_exception=raise_exception,
                 block_identifier=block_identifier,
             )
+
+        return results
 
     ################################################################################
     # Tracing

@@ -2,11 +2,11 @@ from better_web3 import Chain, TxSpeed
 
 goerli = Chain("https://eth-goerli.public.blastapi.io")
 
-base_fee, priority_fee = goerli.estimate_fee_eip1559(tx_speed=TxSpeed.NORMAL)
-print(f"Base fee: {base_fee}, priority fee: {priority_fee}")
+max_fee_per_gas, max_priority_fee_per_gas = goerli.estimate_eip1559_fees(tx_speed=TxSpeed.FASTEST)
+print(f"maxFeePerGas: {max_fee_per_gas} Wei, MaxPriorityFeePerGas: {max_priority_fee_per_gas} Wei")
 
 """output:
-Base fee: 36216, priority fee: 1500000000
+maxFeePerGas: 100000000001 Wei, MaxPriorityFeePerGas: 99999999945 Wei
 """
 
 # If you want to convert a legacy tx to a EIP1559 one

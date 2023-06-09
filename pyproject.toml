@@ -10,6 +10,7 @@ packages = [{include = "better_web3"}]
 python = "^3.11"
 web3 = "^6.4.0"
 requests = "^2.31.0"
+pydantic = "^1.10.9"
 
 
 [build-system]
