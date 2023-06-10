@@ -187,11 +187,8 @@ class Chain:
         """
         :return: True if EIP1559 is supported by the node, False otherwise
         """
-        try:
-            self.w3.eth.fee_history(1, "latest", reward_percentiles=[50])
-            return True
-        except (Web3Exception, ValueError):
-            return False
+        last_block = self.get_block("latest")
+        return True if "baseFeePerGas" in last_block else False
 
     ################################################################################
     # Shortcuts
