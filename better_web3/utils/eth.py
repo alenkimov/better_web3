@@ -7,7 +7,7 @@ from eth_account.account import LocalAccount
 from eth_utils import to_checksum_address, is_checksum_address
 from eth_typing import AnyAddress, ChecksumAddress
 from web3.contract.contract import ContractFunction
-from web3.types import TxParams
+from web3.types import TxParams, Wei
 
 
 def sign_message(message: str, account: LocalAccount) -> str:
@@ -60,3 +60,30 @@ def estimate_data_gas(data: bytes):
             gas += GAS_CALL_DATA_BYTE
     return gas
 
+
+def set_eip1559_fees(tx_params: TxParams, max_fee_per_gas: Wei = None,
+                     max_priority_fee_per_gas: Wei = None,
+                     ) -> TxParams:
+    """
+    Sets the transaction parameters in EIP1559 format.
+
+    Args:
+        tx_params (TxParams): The transaction parameters.
+        max_fee_per_gas (Wei): The maximum fee per gas.
+        max_priority_fee_per_gas (Wei): The maximum priority fee per gas.
+
+    Returns:
+        TxParams: The updated transaction parameters in EIP1559 format.
+
+    Raises:
+        ValueError: If EIP1559 is not supported.
+    """
+    tx_params = tx_params.copy()
+
+    if "gasPrice" in tx_params:
+        del tx_params["gasPrice"]
+
+    tx_params["maxFeePerGas"] = max_fee_per_gas
+    tx_params["maxPriorityFeePerGas"] = max_priority_fee_per_gas
+
+    return tx_params

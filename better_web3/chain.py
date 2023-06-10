@@ -99,7 +99,7 @@ class Chain:
         self._rpc = rpc
         self.explorer = explorer
         self.gas_station = gas_station
-        self.native_token = native_token
+        self.native_token = native_token or NativeToken()
 
         self.http_session = self._prepare_http_session(retry_count)
         self.timeout = provider_timeout
@@ -117,6 +117,8 @@ class Chain:
         if use_poa_middleware:
             self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
             self.slow_w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+
+        self.tracing = TracingManager(self)
 
     def _create_http_provider(self, timeout: int) -> HTTPProvider:
         return HTTPProvider(
@@ -191,46 +193,11 @@ class Chain:
         return True if "baseFeePerGas" in last_block else False
 
     ################################################################################
-    # Shortcuts
+    # Запрос цены газа
     ################################################################################
-
-    def get_nonce(self, address: ChecksumAddress) -> int:
-        return self.w3.eth.get_transaction_count(address)
 
     def get_gas_price(self) -> Wei:
         return self.w3.eth.gas_price
-
-    def is_contract(self, contract_address: ChecksumAddress) -> bool:
-        return bool(self.w3.eth.get_code(contract_address))
-
-    # def calculate_gas(self):
-    #     pending_transactions = self.w3.provider.make_request("parity_pendingTransactions", [])
-    #     gas_prices = []
-    #     gases = []
-    #     for tx in pending_transactions["result"[:10]]:
-    #         gas_prices.append(int((tx["gasPrice"]), 16))
-    #         gases.append(int((tx["gas"]), 16))
-    #
-    #     return statistics.mean(gas_prices)
-
-    # def _apply_eip1559_fee_settings(
-    #         self,
-    #         max_fee_per_gas: Wei,
-    #         max_priority_fee_per_gas: Wei,
-    # ) -> tuple[Wei, Wei]:
-    #     if self.fee_settings.max_fee_per_gas.type_ == "multiplier":
-    #         max_fee_per_gas *= self.fee_settings.max_fee_per_gas.value
-    #         max_fee_per_gas = int(max_fee_per_gas)
-    #     elif self.fee_settings.max_fee_per_gas.type_ == "constant":
-    #         max_fee_per_gas = Web3.to_wei(self.fee_settings.max_fee_per_gas.value, "gwei")
-    #
-    #     if self.fee_settings.max_priority_fee_per_gas.type_ == "multiplier":
-    #         max_priority_fee_per_gas *= self.fee_settings.max_priority_fee_per_gas.value
-    #         max_priority_fee_per_gas = int(max_priority_fee_per_gas)
-    #     elif self.fee_settings.max_priority_fee_per_gas.type_ == "constant":
-    #         max_priority_fee_per_gas = Web3.to_wei(self.fee_settings.max_priority_fee_per_gas.value, "gwei")
-    #
-    #     return max_fee_per_gas, max_priority_fee_per_gas
 
     def estimate_eip1559_fees(self, tx_speed: TxSpeed = TxSpeed.NORMAL) -> tuple[int, int]:
         """
@@ -256,37 +223,37 @@ class Chain:
         max_fee_per_gas = base_fee_per_gas + max_priority_fee_per_gas
         return max_fee_per_gas, max_priority_fee_per_gas
 
-    def set_eip1559_fees(
-            self,
-            tx: TxParams,
-            max_fee_per_gas: Wei = None,
-            max_priority_fee_per_gas: Wei = None,
-    ) -> TxParams:
-        """
-        :return: TxParams in EIP1559 format
-        :raises: ValueError if EIP1559 not supported
-        """
-        tx = dict(tx)  # Don't modify provided tx
-        if "gasPrice" in tx:
-            del tx["gasPrice"]
+    ################################################################################
+    # Работа с транзакциями
+    ################################################################################
 
-        if "chainId" not in tx:
-            tx["chainId"] = self.chain_id
-
-        tx["maxFeePerGas"] = max_fee_per_gas
-        tx["maxPriorityFeePerGas"] = max_priority_fee_per_gas
-        return tx
-
-    def build_transaction(
+    def build_tx(
             self,
             contract_function: ContractFunction,
-            *,
             gas: int,
             from_: ChecksumAddress = None,
-            gas_price: Wei = None,
             nonce: Nonce = None,
+            gas_price: Wei = None,
+            max_fee_per_gas: Wei = None,
+            max_priority_fee_per_gas: Wei = None,
+            tx_speed: TxSpeed = TxSpeed.NORMAL,
     ) -> TxParams:
+        """
+        Builds and sets the transaction parameters including gas parameters.
 
+        Args:
+            contract_function (ContractFunction): The contract function.
+            gas (int): The gas limit.
+            from_ (ChecksumAddress): The address from which the transaction is sent.
+            nonce (Nonce): The transaction nonce.
+            gas_price (Wei): The gas price (legacy).
+            max_fee_per_gas (Wei): The maximum fee per gas.
+            max_priority_fee_per_gas (Wei): The maximum priority fee per gas.
+            tx_speed (TxSpeed): The transaction speed.
+
+        Returns:
+            TxParams: Transaction parameters.
+        """
         tx_params: TxParams = {
             "gas": gas,
             "chainId": self.chain_id,
@@ -304,8 +271,45 @@ class Chain:
 
         if gas_price is not None:
             tx_params["gasPrice"] = gas_price
+        elif max_fee_per_gas is not None:
+            tx_params["maxFeePerGas"] = max_fee_per_gas
+        if max_priority_fee_per_gas is not None:
+            tx_params["maxPriorityFeePerGas"] = max_priority_fee_per_gas
+        # TODO изменить логику
+        if gas_price is None and max_fee_per_gas is None and max_priority_fee_per_gas is None:
+            if self.is_eip1559_supported:
+                max_fee_per_gas, max_priority_fee_per_gas = self.estimate_eip1559_fees(tx_speed)
+                tx_params["maxFeePerGas"] = max_fee_per_gas
+                tx_params["maxPriorityFeePerGas"] = max_priority_fee_per_gas
+            else:
+                tx_params["gasPrice"] = self.get_gas_price()
 
         return contract_function.build_transaction(tx_params)
+
+    def sign_and_send_tx(
+            self, account: LocalAccount, transaction_dict: TxParams
+    ) -> TxHash:
+        signed_tx = account.sign_transaction(transaction_dict)
+        tx_hash = self._send_raw_tx(signed_tx.rawTransaction)
+        return tx_hash.hex()
+
+    @tx_with_exception_handling
+    def _send_tx(self, transaction_dict: TxParams) -> HexBytes:
+        return self.w3.eth.send_transaction(transaction_dict)
+
+    @tx_with_exception_handling
+    def _send_raw_tx(self, raw_transaction: bytes | HexStr) -> HexBytes:
+        return self.w3.eth.send_raw_transaction(bytes(raw_transaction))
+
+    ################################################################################
+    # Запрос данных
+    ################################################################################
+
+    def is_contract(self, contract_address: ChecksumAddress) -> bool:
+        return bool(self.w3.eth.get_code(contract_address))
+
+    def get_nonce(self, address: ChecksumAddress) -> int:
+        return self.w3.eth.get_transaction_count(address)
 
     def get_balance(
             self,
@@ -338,13 +342,13 @@ class Chain:
         balances = self.raw_batch_request(payload)
         return {address: int(balance, 16) for address, balance in zip(addresses, balances)}
 
-    def get_transaction(self, tx_hash: TxHash) -> Optional[TxData]:
+    def get_tx(self, tx_hash: TxHash) -> Optional[TxData]:
         try:
             return self.w3.eth.get_transaction(tx_hash)
         except TransactionNotFound:
             return None
 
-    def get_transactions(self, tx_hashes: list[TxHash]) -> list[Optional[TxData]]:
+    def get_txs(self, tx_hashes: list[TxHash]) -> list[Optional[TxData]]:
         if not tx_hashes:
             return []
         payload = [
@@ -362,7 +366,7 @@ class Chain:
             for raw_tx in results
         ]
 
-    def get_transaction_receipt(self, tx_hash: TxHash) -> TxReceipt | None:
+    def get_tx_receipt(self, tx_hash: TxHash) -> TxReceipt | None:
         try:
             tx_receipt = self.w3.eth.get_transaction_receipt(tx_hash)
             return (
@@ -373,7 +377,7 @@ class Chain:
         except TransactionNotFound:
             return None
 
-    def wait_for_transaction_receipt(
+    def wait_for_tx_receipt(
             self, tx_hash: TxHash, timeout: float = 120, poll_latency: float = 0.1
     ) -> TxReceipt | None:
         try:
@@ -386,7 +390,7 @@ class Chain:
         except (TimeExhausted, TransactionNotFound):
             return None
 
-    def get_transaction_receipts(
+    def get_tx_receipts(
             self,
             tx_hashes: Iterable[TxHash],
     ) -> dict[TxHash: TxReceipt | None]:
@@ -473,21 +477,6 @@ class Chain:
                 blocks.append(None)
         return blocks
 
-    def sign_and_send_transaction(
-            self, account: LocalAccount, transaction_dict: TxParams
-    ) -> str:
-        signed_tx = account.sign_transaction(transaction_dict)
-        tx_hash = self._send_raw_transaction(signed_tx.rawTransaction)
-        return tx_hash.hex()
-
-    @tx_with_exception_handling
-    def _send_transaction(self, transaction_dict: TxParams) -> HexBytes:
-        return self.w3.eth.send_transaction(transaction_dict)
-
-    @tx_with_exception_handling
-    def _send_raw_transaction(self, raw_transaction: bytes | HexStr) -> HexBytes:
-        return self.w3.eth.send_raw_transaction(bytes(raw_transaction))
-
     def check_tx_with_confirmations(self, tx_hash: TxHash, confirmations: int) -> bool:
         """
         Check the transaction hash and ensure it has the required number of confirmations.
@@ -513,7 +502,7 @@ class Chain:
             return confirmations_count >= confirmations
 
     ################################################################################
-    # Batch call
+    # Batch call and multicall
     ################################################################################
 
     def _custom_batch_call(
@@ -767,10 +756,20 @@ class Chain:
 
         return results
 
-    ################################################################################
-    # Tracing
-    ################################################################################
 
+class Manager:
+    def __init__(self, chain: Chain):
+        self.chain = chain
+        self.rpc = chain.rpc
+        self.w3 = chain.w3
+        self.slow_w3 = chain.slow_w3
+        self.http_session = chain.http_session
+        self.timeout = chain.timeout
+        self.slow_timeout = chain.slow_timeout
+
+
+class TracingManager(Manager):
+    # TODO This method didn't tested
     @staticmethod
     def filter_out_errored_traces(
             internal_txs: Sequence[dict[str, Any]]
@@ -798,6 +797,7 @@ class Chain:
                 new_list.append(internal_tx)
         return new_list
 
+    # TODO This method didn't tested
     def get_previous_trace(
             self,
             tx_hash: TxHash,
@@ -828,6 +828,7 @@ class Chain:
                 else:
                     return trace
 
+    # TODO This method didn't tested
     def get_next_traces(
             self,
             tx_hash: TxHash,
@@ -861,9 +862,11 @@ class Chain:
                     traces.append(trace)
         return traces
 
+    # TODO This method didn't tested
     def trace_block(self, block_identifier: BlockIdentifier) -> list[BlockTrace]:
         return self.slow_w3.tracing.trace_block(block_identifier)
 
+    # TODO This method didn't tested
     def trace_blocks(
             self, block_identifiers: list[BlockIdentifier]
     ) -> list[list[dict[str, Any]]]:
@@ -886,14 +889,16 @@ class Chain:
         results = self.raw_batch_request(payload)
         return [trace_list_result_formatter(block_traces) for block_traces in results]
 
-    def trace_transaction(self, tx_hash: TxHash) -> list[FilterTrace]:
+    # TODO This method didn't tested
+    def trace_tx(self, tx_hash: TxHash) -> list[FilterTrace]:
         """
         :param tx_hash:
         :return: List of internal txs for `tx_hash`
         """
         return self.slow_w3.tracing.trace_transaction(tx_hash)
 
-    def trace_transactions(
+    # TODO This method didn't tested
+    def trace_txs(
             self, tx_hashes: Sequence[TxHash]
     ) -> list[list[FilterTrace]]:
         """
@@ -914,6 +919,7 @@ class Chain:
         results = self.raw_batch_request(payload)
         return [trace_list_result_formatter(tx_traces) for tx_traces in results]
 
+    # TODO This method didn't tested
     def trace_filter(
             self,
             from_block: int = 1,

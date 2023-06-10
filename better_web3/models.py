@@ -5,7 +5,7 @@ from web3.types import Wei
 
 
 class NativeToken(BaseModel):
-    symbol: str
+    symbol: str = "ETH"
     decimals: int = 18
 
 
