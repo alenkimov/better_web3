@@ -12,7 +12,7 @@ import eth_abi
 import requests
 from eth_abi.exceptions import DecodingError
 from eth_account.signers.local import LocalAccount
-from eth_typing import BlockNumber, ChecksumAddress, HexStr
+from eth_typing import BlockNumber, ChecksumAddress, HexStr, Address
 from eth_utils import to_checksum_address
 from hexbytes import HexBytes
 from requests.adapters import HTTPAdapter
@@ -52,7 +52,7 @@ from .exceptions import error_msg_to_exception, BatchCallFunctionFailed
 from .explorer import Explorer
 from .gas_station import GasStation
 from .models import NativeToken
-from .typing import TxHash
+from .types import TxHash
 from .utils import cache, chunks
 
 
@@ -227,47 +227,48 @@ class Chain:
     # Работа с транзакциями
     ################################################################################
 
-    def build_tx(
+    def _build_tx_base_params(
             self,
-            contract_function: ContractFunction,
-            gas: int,
-            from_: ChecksumAddress = None,
+            gas: int = None,
+            from_: Address | ChecksumAddress | str = None,
+            to: Address | ChecksumAddress | str = None,
             nonce: Nonce = None,
-            gas_price: Wei = None,
-            max_fee_per_gas: Wei = None,
-            max_priority_fee_per_gas: Wei = None,
-            tx_speed: TxSpeed = TxSpeed.NORMAL,
+            value: Wei = None,
+            *,
+            tx_params: TxParams = dict(),
     ) -> TxParams:
-        """
-        Builds and sets the transaction parameters including gas parameters.
+        tx_params = tx_params.copy()
 
-        Args:
-            contract_function (ContractFunction): The contract function.
-            gas (int): The gas limit.
-            from_ (ChecksumAddress): The address from which the transaction is sent.
-            nonce (Nonce): The transaction nonce.
-            gas_price (Wei): The gas price (legacy).
-            max_fee_per_gas (Wei): The maximum fee per gas.
-            max_priority_fee_per_gas (Wei): The maximum priority fee per gas.
-            tx_speed (TxSpeed): The transaction speed.
+        tx_params["chainId"] = self.chain_id
 
-        Returns:
-            TxParams: Transaction parameters.
-        """
-        tx_params: TxParams = {
-            "gas": gas,
-            "chainId": self.chain_id,
-        }
-
+        if gas is not None:
+            tx_params["gas"] = gas
         if from_ is not None:
             tx_params["from"] = from_
+        if to is not None:
+            tx_params["to"] = to
+        if value is not None:
+            tx_params["value"] = value
 
         if nonce is not None:
             tx_params["nonce"] = nonce
         elif from_ is not None:
             tx_params["nonce"] = self.get_nonce(from_)
-        else:
-            raise ValueError("Specify at least one of the two values: nonce or from_")
+
+        return tx_params
+
+    def _build_tx_fee_params(
+            self,
+            # legacy pricing
+            gas_price: Wei = None,
+            # dynamic fee pricing
+            max_fee_per_gas: Wei = None,
+            max_priority_fee_per_gas: Wei = None,
+            tx_speed: TxSpeed = TxSpeed.NORMAL,
+            *,
+            tx_params: TxParams = dict(),
+    ) -> TxParams:
+        tx_params = tx_params.copy()
 
         if gas_price is not None:
             tx_params["gasPrice"] = gas_price
@@ -284,11 +285,51 @@ class Chain:
             else:
                 tx_params["gasPrice"] = self.get_gas_price()
 
+        return tx_params
+
+    def build_tx(
+            self,
+            contract_function: ContractFunction,
+            gas: int = None,
+            from_: Address | ChecksumAddress | str = None,
+            to: Address | ChecksumAddress | str = None,
+            nonce: Nonce = None,
+            value: Wei = None,
+            # legacy pricing
+            gas_price: Wei = None,
+            # dynamic fee pricing
+            max_fee_per_gas: Wei = None,
+            max_priority_fee_per_gas: Wei = None,
+            tx_speed: TxSpeed = TxSpeed.NORMAL,
+    ) -> TxParams:
+        """
+        Builds and sets the transaction parameters including gas parameters.
+
+        Args:
+            contract_function (ContractFunction): The contract function.
+            gas (int): The gas limit.
+            from_ (ChecksumAddress): The address from which the transaction is sent.
+            to (ChecksumAddress): Address to.
+            nonce (Nonce): The transaction nonce.
+            value (Wei): Value to send.
+            gas_price (Wei): The gas price (legacy).
+            max_fee_per_gas (Wei): The maximum fee per gas.
+            max_priority_fee_per_gas (Wei): The maximum priority fee per gas.
+            tx_speed (TxSpeed): The transaction speed.
+
+        Returns:
+            TxParams: Transaction parameters.
+        """
+        tx_params = self._build_tx_base_params(gas, from_, to, nonce, value)
+        gas = contract_function.estimate_gas(tx_params)
+        tx_params = self._build_tx_base_params(gas, tx_params=tx_params)
+        tx_params = self._build_tx_fee_params(
+            gas_price, max_fee_per_gas, max_priority_fee_per_gas, tx_speed, tx_params=tx_params)
         return contract_function.build_transaction(tx_params)
 
     def sign_and_send_tx(
             self, account: LocalAccount, transaction_dict: TxParams
-    ) -> TxHash:
+    ) -> HexStr:
         signed_tx = account.sign_transaction(transaction_dict)
         tx_hash = self._send_raw_tx(signed_tx.rawTransaction)
         return tx_hash.hex()
@@ -489,7 +530,7 @@ class Chain:
             bool: True if the transaction was mined with the specified number of confirmations,
                   False otherwise.
         """
-        tx_receipt = self.get_transaction_receipt(tx_hash)
+        tx_receipt = self.get_tx_receipt(tx_hash)
 
         if not tx_receipt or tx_receipt["blockNumber"] is None:
             # If `tx_receipt` exists but `blockNumber` is `None`,
@@ -779,7 +820,7 @@ class TracingManager(Manager):
 
         :param internal_txs: Traces for the SAME ethereum tx, sorted ascending by `trace_address`
             `sorted(t, key = lambda i: i['traceAddress'])`. It's the default output from methods returning `traces` like
-            `trace_block` or `trace_transaction`
+            `trace_block` or `trace_tx`
         :return: List of not errored traces
         """
         new_list = []
@@ -817,7 +858,7 @@ class TracingManager(Manager):
             return None
 
         trace_address = trace_address[:-number_traces]
-        traces = reversed(self.trace_transaction(tx_hash))
+        traces = reversed(self.trace_tx(tx_hash))
         for trace in traces:
             if trace_address == trace["traceAddress"]:
                 if (
@@ -846,7 +887,7 @@ class TracingManager(Manager):
         """
         trace_address_len = len(trace_address)
         traces = []
-        for trace in self.trace_transaction(tx_hash):
+        for trace in self.trace_tx(tx_hash):
             if (
                     trace_address_len + 1 == len(trace["traceAddress"])
                     and trace_address == trace["traceAddress"][:-1]

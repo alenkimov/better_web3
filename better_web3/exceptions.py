@@ -62,6 +62,7 @@ class BatchCallFunctionFailed(BatchCallException):
     pass
 
 
+# TODO Возможно, собственные исключения не такая уж и хорошая идея
 error_msg_to_exception: dict[str, ChainException] = {
     "EIP-155": ChainIdIsRequired,
     "Transaction with the same hash was already imported": TransactionAlreadyImported,

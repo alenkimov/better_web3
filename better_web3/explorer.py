@@ -2,7 +2,7 @@ from typing import Callable
 import time
 import json
 
-import requests
+import requests  # TODO не хватает асинхронной реализации AsyncExplorer на aiohttp
 
 
 class ExplorerError(RuntimeError):

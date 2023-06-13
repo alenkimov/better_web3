@@ -33,17 +33,6 @@ def to_checksum_addresses(addresses: Iterable[AnyAddress or str]) -> list[AnyAdd
             for address in addresses]
 
 
-def estimate_gas(
-        contract_function: ContractFunction,
-        *,
-        from_: ChecksumAddress = None,
-):
-    tx_params: TxParams = {}
-    if from_ is not None:
-        tx_params["from"] = from_
-    return contract_function.estimate_gas(tx_params)
-
-
 GAS_CALL_DATA_ZERO_BYTE = 4
 GAS_CALL_DATA_BYTE = 16  # 68 before Istanbul
 

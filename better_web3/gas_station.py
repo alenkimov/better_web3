@@ -1,4 +1,4 @@
-import requests
+import requests  # TODO не хватает асинхронной реализации AsyncGasStation на aiohttp
 from web3 import Web3
 
 from .models import GasData
