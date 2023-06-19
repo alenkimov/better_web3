@@ -233,8 +233,10 @@ class Chain:
             nonce: Nonce = None,
             value: Wei = None,
             *,
-            tx_params: TxParams = dict(),
+            tx_params: TxParams = None,
     ) -> TxParams:
+        if tx_params is None:
+            tx_params = dict()
         tx_params = tx_params.copy()
 
         tx_params["chainId"] = self.chain_id
@@ -264,24 +266,21 @@ class Chain:
             max_priority_fee_per_gas: Wei = None,
             tx_speed: TxSpeed = TxSpeed.NORMAL,
             *,
-            tx_params: TxParams = dict(),
+            tx_params: TxParams = None,
     ) -> TxParams:
+        if tx_params is None:
+            tx_params = dict()
         tx_params = tx_params.copy()
 
-        if gas_price is not None:
-            tx_params["gasPrice"] = gas_price
-        elif max_fee_per_gas is not None:
+        if self.is_eip1559_supported:
+            if max_fee_per_gas is None or max_priority_fee_per_gas is None:
+                estimated_max_fee_per_gas, estimated_max_priority_fee_per_gas = self.estimate_eip1559_fees(tx_speed)
+                max_fee_per_gas = max_fee_per_gas or estimated_max_fee_per_gas
+                max_priority_fee_per_gas = max_priority_fee_per_gas or estimated_max_priority_fee_per_gas
             tx_params["maxFeePerGas"] = max_fee_per_gas
-        if max_priority_fee_per_gas is not None:
             tx_params["maxPriorityFeePerGas"] = max_priority_fee_per_gas
-        # TODO изменить логику
-        if gas_price is None and max_fee_per_gas is None and max_priority_fee_per_gas is None:
-            if self.is_eip1559_supported:
-                max_fee_per_gas, max_priority_fee_per_gas = self.estimate_eip1559_fees(tx_speed)
-                tx_params["maxFeePerGas"] = max_fee_per_gas
-                tx_params["maxPriorityFeePerGas"] = max_priority_fee_per_gas
-            else:
-                tx_params["gasPrice"] = self.get_gas_price()
+        else:
+            tx_params["gasPrice"] = gas_price or self.get_gas_price()
 
         return tx_params
 
