@@ -1,38 +1,42 @@
 from eth_utils import from_wei
-from web3.types import Wei, ChecksumAddress
 
-from better_web3 import Chain
+from better_web3 import Chain, JSONRPCException
 from better_web3.utils import to_checksum_addresses
 
 
-goerli = Chain("https://eth-goerli.public.blastapi.io")
-
-weth = goerli.erc20("0xb4fbf271143f4fbf7b91a5ded31805e42b2208d6")
-
-addresses = to_checksum_addresses(
-    [
-        "0x780afe4a82Ed3B46eA6bA94a1BB8F7b977298722",
-        "0xb4fbf271143f4fbf7b91a5ded31805e42b2208d6",
-    ]
-)
+goerli = Chain("https://eth-goerli.public.blastapi.io", symbol="gETH", batch_request_size=15)
 
 
-def print_balances(balances: dict[ChecksumAddress: Wei], token_symbol: str):
-    eth_balances = {address: from_wei(balance, "ether") for address, balance in balances.items()}
-    for i, (address, balance) in enumerate(eth_balances.items(), start=1):
-        print(f"[{i}] [{address}] {balance:.2f} {token_symbol}")
+with open("addresses.txt", "r") as file:
+    addresses = to_checksum_addresses([address.strip() for address in file.readlines()])
 
 
-eth_balances_wei = goerli.get_balances(addresses)
-print_balances(eth_balances_wei, "ETH")
+def print_balances(balances, token_symbol: str):
+    for i, balance_data in enumerate(balances, start=1):
+        address = balance_data["address"]
+        balance = balance_data["balance"]
+        print(f"[{i:03}] [{address}] ", end="")
+        if not isinstance(balance, JSONRPCException):
+            balance = from_wei(balance, "ether")
+            print(f"{token_symbol} {round(balance, 2)}")
+        else:
+            print(balance)
+
+
+eth_balances = goerli.batch_request.balances(addresses, raise_exceptions=False)
+print_balances(eth_balances, goerli.token.symbol)
 """output:
-[1] [0x780afe4a82Ed3B46eA6bA94a1BB8F7b977298722] 17.72 ETH
-[2] [0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6] 1013680.97 ETH
+[001] [0x780afe4a82Ed3B46eA6bA94a1BB8F7b977298722] gETH 17.72
+[002] [0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6] gETH 976015.51
+...
 """
 
-weth_balances_wei = weth.get_balances(addresses)
-print_balances(weth_balances_wei, weth.get_symbol())
+
+weth = goerli.erc20("0xb4fbf271143f4fbf7b91a5ded31805e42b2208d6")
+weth_balances = weth.get_balances(addresses, raise_exceptions=False)
+print_balances(weth_balances, weth.symbol)
 """output:
-[1] [0x780afe4a82Ed3B46eA6bA94a1BB8F7b977298722] 1.20 WETH
-[2] [0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6] 47.35 WETH
+[001] [0x780afe4a82Ed3B46eA6bA94a1BB8F7b977298722] WETH 1.20
+[002] [0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6] WETH 47.35
+...
 """

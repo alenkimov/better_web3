@@ -1,7 +1,7 @@
 """More about MulticallV3: https://github.com/mds1/multicall
 """
 from dataclasses import dataclass
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, Sequence
 
 import eth_abi
 from eth_abi.exceptions import DecodingError
@@ -12,7 +12,6 @@ from web3._utils.normalizers import BASE_RETURN_NORMALIZERS
 from web3.contract.contract import ContractFunction
 from web3.exceptions import ContractLogicError
 
-from ..exceptions import BatchCallFunctionFailed
 from .abi import MULTICALL_V3_ABI
 from .contract import Contract
 
@@ -27,20 +26,24 @@ MULTICALL_V3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11"
 @dataclass
 class MulticallResult:
     success: bool
-    return_data: Optional[bytes]
+    return_data: bytes | None
 
 
 @dataclass
 class MulticallDecodedResult:
     success: bool
-    return_data_decoded: Optional[Any]
+    return_data_decoded: Any | None
+
+
+class MulticallFailed(Exception):
+    pass
 
 
 class Multicall(Contract):
     def __init__(
         self,
         chain: "Chain",
-        address: Optional[ChecksumAddress | str] = None,
+        address: ChecksumAddress | str = None,
         abi=None,
     ):
         address = address or MULTICALL_V3_ADDRESS
@@ -67,7 +70,7 @@ class Multicall(Contract):
         return targets_with_data, output_types
 
     @staticmethod
-    def _decode_data(output_type: Sequence[str], data: bytes) -> Optional[Any]:
+    def _decode_data(output_type: Sequence[str], data: bytes) -> Any | None:
         """
 
         :param output_type:
@@ -94,14 +97,10 @@ class Multicall(Contract):
     def _aggregate(
         self,
         targets_with_data: Sequence[tuple[ChecksumAddress, bytes]],
-        block_identifier: Optional[BlockIdentifier] = "latest",
-    ) -> tuple[BlockNumber, list[Optional[Any]]]:
+        block_identifier: BlockIdentifier = "latest",
+    ) -> tuple[BlockNumber, list[Any | None]]:
         """
-
         :param targets_with_data: List of target `addresses` and `data` to be called in each Contract
-        :param block_identifier:
-        :return:
-        :raises: BatchCallFunctionFailed
         """
         aggregate_parameter = [
             {"target": target, "callData": data} for target, data in targets_with_data
@@ -111,21 +110,13 @@ class Multicall(Contract):
                 block_identifier=block_identifier
             )
         except (ContractLogicError, OverflowError):
-            raise BatchCallFunctionFailed
+            raise MulticallFailed
 
     def aggregate(
         self,
         contract_functions: Sequence[ContractFunction],
-        block_identifier: Optional[BlockIdentifier] = "latest",
-    ) -> Tuple[BlockNumber, List[Optional[Any]]]:
-        """
-        Calls aggregate on MakerDAO's Multicall contract. If a function called raises an error execution is stopped
-
-        :param contract_functions:
-        :param block_identifier:
-        :return: A tuple with the ``blockNumber`` and a list with the decoded return values
-        :raises: BatchCallFunctionFailed
-        """
+        block_identifier: BlockIdentifier = "latest",
+    ) -> tuple[BlockNumber, list[Any | None]]:
         targets_with_data, output_types = self._build_payload(contract_functions)
         block_number, results = self._aggregate(
             targets_with_data, block_identifier=block_identifier
@@ -138,23 +129,14 @@ class Multicall(Contract):
 
     def _try_aggregate(
         self,
-        targets_with_data: Sequence[Tuple[ChecksumAddress, bytes]],
+        targets_with_data: Sequence[tuple[ChecksumAddress, bytes]],
         require_success: bool = False,
-        block_identifier: Optional[BlockIdentifier] = "latest",
-    ) -> List[MulticallResult]:
-        """
-        Calls ``try_aggregate`` on MakerDAO's Multicall contract.
-
-        :param targets_with_data:
-        :param require_success: If ``True``, an exception in any of the functions will stop the execution. Also, an
-            invalid decoded value will stop the execution
-        :param block_identifier:
-        :return: A list with the decoded return values
-        """
-
+        block_identifier: BlockIdentifier = "latest",
+    ) -> list[MulticallResult]:
         aggregate_parameter = [
             {"target": target, "callData": data} for target, data in targets_with_data
         ]
+
         try:
             result = self.functions.tryAggregate(
                 require_success, aggregate_parameter
@@ -162,28 +144,25 @@ class Multicall(Contract):
 
             if require_success and b"" in (data for _, data in result):
                 # `b''` values are decoding errors/missing contracts/missing functions
-                raise BatchCallFunctionFailed
+                raise MulticallFailed
 
             return [
                 MulticallResult(success, data if data else None)
                 for success, data in result
             ]
         except (ContractLogicError, OverflowError, ValueError):
-            raise BatchCallFunctionFailed
+            raise MulticallFailed
 
     def try_aggregate(
         self,
         contract_functions: Sequence[ContractFunction],
         require_success: bool = False,
-        block_identifier: Optional[BlockIdentifier] = "latest",
-    ) -> List[MulticallDecodedResult]:
+        block_identifier: BlockIdentifier = "latest",
+    ) -> list[MulticallDecodedResult]:
         """
         Calls ``try_aggregate`` on MakerDAO's Multicall contract.
 
-        :param contract_functions:
         :param require_success: If ``True``, an exception in any of the functions will stop the execution
-        :param block_identifier:
-        :return: A list with the decoded return values
         """
         targets_with_data, output_types = self._build_payload(contract_functions)
         results = self._try_aggregate(

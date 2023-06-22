@@ -3,8 +3,10 @@ from . import utils
 from .explorer import Explorer
 from .chain import Chain
 from .enums import TxSpeed
-from .models import NativeToken
-from .gas_station import GasStation, GasData
+from .gas_station import GasStation
+# Exceptions
+from .contract.multicall import MulticallFailed
+from .batch_call import JSONRPCException
 
 __all__ = [
     "contract",
@@ -12,7 +14,7 @@ __all__ = [
     "Explorer",
     "Chain",
     "TxSpeed",
-    "NativeToken",
     "GasStation",
-    "GasData",
+    "MulticallFailed",
+    "JSONRPCException",
 ]

@@ -1,11 +1,16 @@
-from typing import Any, Iterable
+from typing import Iterable
+from itertools import islice
 
 
-def chunks(elements: list[Any], n: int) -> Iterable[Any]:
+def chunks(elements: Iterable, n: int) -> Iterable[list]:
     """
-    :param elements: List
-    :param n: Number of elements per chunk
-    :return: Yield successive n-sized chunks from l
+    :param elements: Iterable
+    :param n: Number per chunk
+    :return: Yield successive n-sized chunks from elements
     """
-    for i in range(0, len(elements), n):
-        yield elements[i: i + n]
+    it = iter(elements)
+    while True:
+        chunk = list(islice(it, n))
+        if not chunk:
+            return
+        yield chunk

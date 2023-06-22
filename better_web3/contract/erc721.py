@@ -1,23 +1,17 @@
-from typing import TYPE_CHECKING, cast, Iterable
+from typing import TYPE_CHECKING, Iterable
 
-from eth_abi.exceptions import DecodingError
 from eth_typing import ChecksumAddress, BlockIdentifier
 from eth_utils import to_checksum_address
 
 from .abi import ERC721_ABI
 from .contract import Contract
-from .exceptions import InvalidERC721Info
-from .model import Erc721Info
+from ..utils import cache
 
 if TYPE_CHECKING:
     from ..chain import Chain
 
 
 class ERC721(Contract):
-    """
-    Реализация ERC721 контракта
-    """
-
     def __init__(
             self,
             chain: "Chain",
@@ -27,80 +21,70 @@ class ERC721(Contract):
         abi = abi or ERC721_ABI
         super().__init__(chain, address, abi)
 
+    @property
+    @cache
+    def name(self) -> str:
+        return self.functions.name().call()
+
+    @property
+    @cache
+    def symbol(self) -> str:
+        return self.functions.symbol().call()
+
     def get_balance(
             self,
             address: ChecksumAddress,
-            block_identifier: BlockIdentifier | None = "latest",
+            block_identifier: BlockIdentifier = "latest",
     ) -> int:
-        balance = self.functions.balanceOf(address).call(block_identifier=block_identifier)
-        return balance
+        return self.functions.balanceOf(address).call(block_identifier=block_identifier)
 
     def get_balances(
             self,
             addresses: Iterable[ChecksumAddress],
-            block_identifier: BlockIdentifier | None = "latest",
-    ) -> dict[ChecksumAddress: int]:
-        """
-        If there's a problem with a token_address `0` will be returned for balance
-        """
+            block_identifier: BlockIdentifier = "latest",
+            **kwargs,
+    ) -> Iterable[dict[str: ChecksumAddress, str: int]]:
         if not addresses:
             return []
-        addresses = list(addresses)
-        balances = self.chain.batch_call(
+
+        balances = self.chain.batch_request.contract_request(
             [self.functions.balanceOf(address) for address in addresses],
-            block_identifier=block_identifier,
-            raise_exception=False,
+            block_identifier,
+            **kwargs,
         )
-        return {address: balance if isinstance(balance, int) else 0
-                for address, balance in zip(addresses, balances)}
+        for address, balance_data in zip(addresses, balances):
+            yield {"address": address, "balance":  balance_data["result"]}
 
     def get_owners(
             self,
             token_ids: Iterable[int],
-            block_identifier: BlockIdentifier | None = "latest",
-    ) -> dict[int: ChecksumAddress]:
+            block_identifier: BlockIdentifier = "latest",
+            **kwargs,
+    ) -> Iterable[dict[str: int, str: ChecksumAddress]]:
         if not token_ids:
             return []
-        token_ids = list(token_ids)
-        owners = self.chain.batch_call(
+
+        owners = self.chain.batch_request.contract_request(
             [self.functions.ownerOf(token_id) for token_id in token_ids],
-            block_identifier=block_identifier,
-            raise_exception=False,
+            block_identifier,
+            **kwargs,
         )
-        return {token_id: to_checksum_address(owner) if isinstance(owner, str) else None
-                for token_id, owner in zip(token_ids, owners)}
+        for token_id, owner_data in zip(token_ids, owners):
+            yield {"token_id": token_id, "owner": to_checksum_address(owner_data["result"])}
 
     def get_token_uris(
             self,
             token_ids: Iterable[int],
-            block_identifier: BlockIdentifier | None = "latest",
-    ) -> dict[int: str]:
+            block_identifier: BlockIdentifier = "latest",
+            **kwargs,
+    ) -> Iterable[dict[str: int, str: str]]:
         if not token_ids:
             return []
-        token_ids = list(token_ids)
-        token_uris = self.chain.batch_call(
+
+        token_uris = self.chain.batch_request.contract_request(
             [self.functions.tokenURI(token_id) for token_id in token_ids],
             block_identifier=block_identifier,
-            raise_exception=False,
+            **kwargs,
         )
-        return {token_id: token_uri if isinstance(token_uri, str) else None
-                for token_id, token_uri in zip(token_ids, token_uris)}
-
-    def get_info(self) -> Erc721Info:
-        """
-        Get erc721 information (`name`, `symbol`)
-        Use batching to get all info in the same request
-        """
-        try:
-            name, symbol = cast(
-                list[str],
-                self.chain.batch_call(
-                    [
-                        self.functions.name(),
-                        self.functions.symbol(),
-                    ]
-                ),
-            )
-            return Erc721Info(name, symbol)
-        except (DecodingError, ValueError):  # Not all the ERC721 have metadata
-            raise InvalidERC721Info
+        for token_id, uri_data in zip(token_ids, token_uris):
+            yield {"token_id": token_id, "uri": uri_data["result"]}
