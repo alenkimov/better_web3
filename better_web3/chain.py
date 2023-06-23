@@ -277,7 +277,7 @@ class Chain:
             tx_params = dict()
         tx_params = tx_params.copy()
 
-        if self.is_eip1559_supported:
+        if self.is_eip1559_supported and gas_price is None:
             if max_fee_per_gas is None or max_priority_fee_per_gas is None:
                 estimated_max_fee_per_gas, estimated_max_priority_fee_per_gas = self.estimate_eip1559_fees(tx_speed)
                 max_fee_per_gas = max_fee_per_gas or estimated_max_fee_per_gas
