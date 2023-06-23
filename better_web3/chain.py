@@ -20,7 +20,7 @@ from web3.types import (
 from .batch_call import BatchCallManager
 from .contract import Contract, Multicall, ERC20, ERC721
 from .enums import TxSpeed
-from .utils import cache
+from .utils import cache, link_by_tx_hash
 
 
 class NativeToken(BaseModel):
@@ -36,6 +36,8 @@ class Chain:
             # Native token
             symbol: str = "ETH",
             decimals: int = 18,
+            # Explorer
+            explorer_url: str = None,
             # Connection settings
             provider_timeout: int = 15,
             slow_provider_timeout: int = 60,
@@ -50,6 +52,7 @@ class Chain:
     ):
         self._rpc = rpc
         self.token = NativeToken(symbol=symbol, decimals=decimals)
+        self.explorer_url = explorer_url
 
         self.http_session = self._prepare_http_session(retry_count)
         self.timeout = provider_timeout
@@ -104,6 +107,11 @@ class Chain:
     @property
     def rpc(self):
         return self._rpc
+
+    def get_link_by_tx_hash(self, tx_hash: HexStr | str):
+        if self.explorer_url is None:
+            raise ValueError("Set explorer_url before using this method")
+        return link_by_tx_hash(self.explorer_url, tx_hash)
 
     ################################################################################
     # Contract creation shortcuts
