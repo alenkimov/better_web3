@@ -8,7 +8,7 @@ from eth_utils import from_wei, to_wei
 
 from better_web3 import Chain
 from better_web3.contract import Contract
-from better_web3.utils import link_by_tx_hash, load_json, to_checksum_addresses
+from better_web3.utils import load_json, to_checksum_addresses
 
 from get_balances import print_balances
 
@@ -25,10 +25,6 @@ class Disperse(Contract):
         return self.functions.disperseEther(recipients, values)
 
 
-def print_goerli_tx_hash(tx_hash: str):
-    print(f"tx: {link_by_tx_hash('https://goerli.etherscan.io', tx_hash)}")
-
-
 def print_tx_receipt(tx_receipt: TxReceipt):
     print(f"tx_receipt:")
     print(pformat(dict(tx_receipt)))
@@ -40,7 +36,8 @@ def get_and_print_balances(addresses):
 
 
 if __name__ == '__main__':
-    goerli = Chain("https://eth-goerli.public.blastapi.io", symbol="gETH")
+    goerli = Chain("https://eth-goerli.public.blastapi.io",
+                   symbol="gETH", explorer_url="https://goerli.etherscan.io")
 
     disperse_contract_address = "0xD152f549545093347A162Dce210e7293f1452150"
     disperse_abi = load_json("disperse_abi.json")
@@ -76,7 +73,7 @@ if __name__ == '__main__':
     tx = goerli.build_tx(disperse_ether_fn, from_=account.address, value=total_value)
 
     tx_hash = goerli.sign_and_send_tx(account, tx)
-    print_goerli_tx_hash(tx_hash)
+    print(f"tx: {goerli.get_link_by_tx_hash(tx_hash)}")
     """output
     tx: https://goerli.etherscan.io/tx/0xdb7a3a03c49752aabb96207508269493eb35762249ad1b4e90a97685cb899571
     """
