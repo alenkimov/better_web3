@@ -20,8 +20,6 @@ from web3.types import (
 from .batch_call import BatchCallManager
 from .contract import Contract, Multicall, ERC20, ERC721
 from .enums import TxSpeed
-from .explorer import Explorer
-from .gas_station import GasStation
 from .utils import cache
 
 
@@ -34,8 +32,6 @@ class Chain:
     def __init__(
             self,
             rpc: str,
-            explorer: Explorer = None,
-            gas_station: GasStation = None,
             *,
             # Native token
             symbol: str = "ETH",
@@ -53,8 +49,6 @@ class Chain:
             batch_request_delay: int = 1,
     ):
         self._rpc = rpc
-        self.explorer = explorer
-        self.gas_station = gas_station
         self.token = NativeToken(symbol=symbol, decimals=decimals)
 
         self.http_session = self._prepare_http_session(retry_count)
@@ -302,9 +296,9 @@ class Chain:
             from_: Address | ChecksumAddress | str = None,
             to: Address | ChecksumAddress | str = None,
             nonce: Nonce = None,
-            value: Wei = None,
+            value: Wei | int = None,
             # legacy pricing
-            gas_price: Wei = None,
+            gas_price: Wei | int = None,
             # dynamic fee pricing
             max_fee_per_gas: Wei = None,
             max_priority_fee_per_gas: Wei = None,

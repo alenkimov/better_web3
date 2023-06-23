@@ -7,7 +7,7 @@ from .eth import (
     hex_block_identifier,
 )
 from .file import load_toml, load_json
-from .other import chunks
+from .other import chunks, link_by_tx_hash
 
 
 cache = lru_cache(maxsize=None)
@@ -23,4 +23,5 @@ __all__ = [
     "load_toml",
     "load_json",
     "chunks",
+    "link_by_tx_hash",
 ]

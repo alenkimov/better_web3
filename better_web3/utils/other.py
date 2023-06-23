@@ -1,6 +1,8 @@
 from typing import Iterable
 from itertools import islice
 
+from eth_typing import HexStr
+
 
 def chunks(elements: Iterable, n: int) -> Iterable[list]:
     """
@@ -14,3 +16,7 @@ def chunks(elements: Iterable, n: int) -> Iterable[list]:
         if not chunk:
             return
         yield chunk
+
+
+def link_by_tx_hash(explorer_url: str, tx_hash: HexStr | str):
+    return f"{explorer_url}/tx/{tx_hash}"
