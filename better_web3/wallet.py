@@ -26,19 +26,20 @@ class Wallet:
         info += f" [{self.address}]"
         return info
 
-    @staticmethod
-    def from_key(private_key: str, name: str = None) -> "Wallet":
+    @classmethod
+    def from_key(cls, private_key: str, name: str = None) -> "Wallet":
         account = Account.from_key(private_key)
-        return Wallet(account, name=name)
+        return cls(account, name=name)
 
-    @staticmethod
+    @classmethod
     def from_mnemonic(
+            cls,
             mnemonic: str,
             passphrase: str = "",
             name: str = None,
     ) -> "Wallet":
         account = Account.from_key(mnemonic, passphrase)
-        return Wallet(account, name=name)
+        return cls(account, name=name)
 
     @property
     def private_key(self) -> str:
