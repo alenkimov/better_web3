@@ -8,7 +8,6 @@ from web3.contract.contract import ContractEvents, ContractFunctions
 
 if TYPE_CHECKING:
     from ..chain import Chain
-    from ..explorer import Explorer
 
 
 class Contract:
@@ -25,10 +24,6 @@ class Contract:
     @property
     def chain(self) -> "Chain":
         return self._chain
-
-    @property
-    def explorer(self) -> "Explorer":
-        return self._chain.explorer
 
     @property
     def contract(self) -> Web3Contract:
