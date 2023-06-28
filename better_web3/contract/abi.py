@@ -1,4 +1,4 @@
-from ..utils import load_json
+from ..utils.file import load_json
 from ._paths import ABI_DIR
 
 

@@ -33,6 +33,7 @@ class Chain:
             self,
             rpc: str,
             *,
+            name: str = "EVM Chain",
             # Native token
             symbol: str = "ETH",
             decimals: int = 18,
@@ -51,6 +52,7 @@ class Chain:
             batch_request_delay: int = 1,
     ):
         self._rpc = rpc
+        self.name = name
         self.token = NativeToken(symbol=symbol, decimals=decimals)
         self.explorer_url = explorer_url
 
@@ -80,10 +82,10 @@ class Chain:
         )
 
     def __repr__(self):
-        try:
-            return f"Chain(id={self.chain_id}, rpc={self.rpc})"
-        except:  # TODO Определить исключение
-            return f"Chain(rpc={self.rpc})"
+        return f"Chain(rpc={self.rpc})"
+
+    def __str__(self):
+        return f"<{self.name}>"
 
     @staticmethod
     def _prepare_http_session(retry_count: int) -> requests.Session:
@@ -329,3 +331,15 @@ class Chain:
 
     def _send_raw_tx(self, raw_tx: bytes | HexStr) -> HexBytes:
         return self.w3.eth.send_raw_transaction(bytes(raw_tx))
+
+    def execute_fn(
+            self,
+            account: LocalAccount,
+            fn: ContractFunction,
+            *,
+            value: Wei = None,
+    ) -> tuple[TxReceipt, HexStr]:
+        tx = self.build_tx(fn, from_=account.address, value=value)
+        tx_hash = self.sign_and_send_tx(account, tx)
+        tx_receipt = self.wait_for_tx_receipt(tx_hash)
+        return tx_receipt, tx_hash

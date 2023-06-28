@@ -1,7 +1,12 @@
+import json
 from typing import Iterable
 from itertools import islice
+from functools import lru_cache
 
 from eth_typing import HexStr
+
+
+cache = lru_cache(maxsize=None)
 
 
 def chunks(elements: Iterable, n: int) -> Iterable[list]:
@@ -20,3 +25,7 @@ def chunks(elements: Iterable, n: int) -> Iterable[list]:
 
 def link_by_tx_hash(explorer_url: str, tx_hash: HexStr | str):
     return f"{explorer_url}/tx/{tx_hash}"
+
+
+def to_json(obj) -> str:
+    return json.dumps(obj, separators=(',', ':'), ensure_ascii=True)

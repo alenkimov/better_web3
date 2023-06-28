@@ -8,7 +8,8 @@ from eth_utils import from_wei, to_wei
 
 from better_web3 import Chain
 from better_web3.contract import Contract
-from better_web3.utils import load_json, to_checksum_addresses
+from better_web3.utils.file import load_json
+from better_web3.utils.eth import to_checksum_addresses
 
 from get_balances import print_balances
 
@@ -43,15 +44,15 @@ if __name__ == '__main__':
     disperse_abi = load_json("disperse_abi.json")
     disperse = Disperse(goerli, disperse_contract_address, disperse_abi)
 
-    private_key = "..."
+    private_key = "1c226545b57d76e3dfa11522248b10ce82ccb99b874fb639917698c70e1e633d"
     account = Account.from_key(private_key)
 
     values = [to_wei(0.01, "ether")] * 2
     total_value = sum(values)
     recipients = to_checksum_addresses(
         [
-            "0x...",
-            "0x...",
+            "0xd87Fa8ac81834c6625519589C38Cb54899F1FBA5",
+            "0xc278c6B61C33A97e39cE5603Caa8A0235839B2b0",
         ]
     )
     get_and_print_balances(recipients)

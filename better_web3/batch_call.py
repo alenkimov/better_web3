@@ -23,7 +23,8 @@ from web3.types import (
     Wei,
 )
 
-from .utils import chunks, hex_block_identifier
+from .utils import chunks
+from .utils.eth import hex_block_identifier
 
 if TYPE_CHECKING:
     from .chain import Chain

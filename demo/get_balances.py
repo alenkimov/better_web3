@@ -1,7 +1,7 @@
 from eth_utils import from_wei
 
 from better_web3 import Chain, JSONRPCException
-from better_web3.utils import to_checksum_addresses
+from better_web3.utils.eth import to_checksum_addresses
 
 
 def print_balances(balances, token_symbol: str):
