@@ -1,4 +1,5 @@
 from eth_account.account import Account, LocalAccount
+from eth_typing import ChecksumAddress
 
 from better_web3.utils.eth import sign_message
 
@@ -46,7 +47,7 @@ class Wallet:
         return self.account.key.hex()
 
     @property
-    def address(self) -> str:
+    def address(self) -> ChecksumAddress:
         return self.account.address
 
     def sign_message(self, message: str) -> str:

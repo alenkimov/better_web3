@@ -34,6 +34,7 @@ class Chain:
             rpc: str,
             *,
             name: str = "EVM Chain",
+            is_testnet: bool = False,
             # Native token
             symbol: str = "ETH",
             decimals: int = 18,
@@ -53,6 +54,7 @@ class Chain:
     ):
         self._rpc = rpc
         self.name = name
+        self.is_testnet = is_testnet
         self.token = NativeToken(symbol=symbol, decimals=decimals)
         self.explorer_url = explorer_url
 
@@ -82,7 +84,7 @@ class Chain:
         )
 
     def __repr__(self):
-        return f"Chain(rpc={self.rpc})"
+        return f"Chain(rpc=\"{self.rpc})\""
 
     def __str__(self):
         return f"<{self.name}>"

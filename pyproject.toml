@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "better-web3"
-version = "1.2.0"
-description = "Chain, Explorer, Contracts(Multicall, ERC20/ERC721), batch calls and other.."
+version = "1.2.1"
+description = "Chain, Contracts(Multicall, ERC20/ERC721), batch calls and other.."
 authors = ["Alen <alen.kimov@gmail.com>"]
 readme = "README.md"
 packages = [{include = "better_web3"}]
