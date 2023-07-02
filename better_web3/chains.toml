@@ -9,6 +9,7 @@ name = "BSC"
 rpc = "https://rpc.ankr.com/bsc"
 explorer_url = "https://bscscan.com"
 symbol = "BNB"
+gas_price = 1.5  # gwei
 
 [mainnet.137]
 name = "Polygon"

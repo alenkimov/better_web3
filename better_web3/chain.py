@@ -51,6 +51,8 @@ class Chain:
             # Batch request
             batch_request_size: int = 500,
             batch_request_delay: int = 1,
+            # Tx params
+            gas_price: Wei | int = None,
     ):
         self._rpc = rpc
         self.name = name
@@ -75,6 +77,8 @@ class Chain:
         self.multicall = Multicall(chain=self, address=multicall_v3_address)
         self.batch_request = BatchCallManager(
             self, batch_request_size, batch_request_delay)
+
+        self.gas_price = gas_price
 
     def _create_http_provider(self, timeout: int) -> HTTPProvider:
         return HTTPProvider(
@@ -213,6 +217,45 @@ class Chain:
 
             return confirmations_count >= confirmations
 
+    def transfer(
+            self,
+            account_from: LocalAccount,
+            address_to: Address | ChecksumAddress | str,
+            value: Wei | int,
+            *,
+            gas: int = None,
+            nonce: Nonce | int = None,
+            # legacy pricing
+            gas_price: Wei | int = None,
+            # dynamic fee pricing
+            max_fee_per_gas: Wei = None,
+            max_priority_fee_per_gas: Wei = None,
+            tx_speed: TxSpeed = TxSpeed.NORMAL,
+    ) -> HexStr:
+        gas_price = gas_price or self.gas_price
+        tx_params = self._build_tx_base_params(gas, account_from.address, address_to, nonce, value)
+        gas = self.w3.eth.estimate_gas(tx_params)
+        tx_params = self._build_tx_base_params(gas, tx_params=tx_params)
+        tx_params = self._build_tx_fee_params(
+            gas_price, max_fee_per_gas, max_priority_fee_per_gas, tx_speed, tx_params=tx_params)
+        return self.sign_and_send_tx(account_from, tx_params)
+
+    def transfer_all(
+            self,
+            account_from: LocalAccount,
+            address_to: Address | ChecksumAddress | str,
+            *,
+            gas: int = None,
+            nonce: Nonce | int = None,
+            # legacy pricing
+            gas_price: Wei | int = None,
+            # dynamic fee pricing
+            max_fee_per_gas: Wei = None,
+            max_priority_fee_per_gas: Wei = None,
+            tx_speed: TxSpeed = TxSpeed.NORMAL,
+    ):
+        ...  # TODO Реализовать метод Chain.transfer_all()
+
     ################################################################################
     # Gas price shortcuts
     ################################################################################
@@ -245,9 +288,9 @@ class Chain:
     def _build_tx_base_params(
             self,
             gas: int = None,
-            from_: Address | ChecksumAddress | str = None,
-            to: Address | ChecksumAddress | str = None,
-            nonce: Nonce = None,
+            address_from: Address | ChecksumAddress | str = None,
+            address_to: Address | ChecksumAddress | str = None,
+            nonce: Nonce | int = None,
             value: Wei = None,
             *,
             tx_params: TxParams = None,
@@ -260,17 +303,17 @@ class Chain:
 
         if gas is not None:
             tx_params["gas"] = gas
-        if from_ is not None:
-            tx_params["from"] = from_
-        if to is not None:
-            tx_params["to"] = to
+        if address_from is not None:
+            tx_params["from"] = address_from
+        if address_to is not None:
+            tx_params["to"] = address_to
         if value is not None:
             tx_params["value"] = value
 
         if nonce is not None:
             tx_params["nonce"] = nonce
-        elif from_ is not None:
-            tx_params["nonce"] = self.get_nonce(from_)
+        elif address_from is not None:
+            tx_params["nonce"] = self.get_nonce(address_from)
 
         return tx_params
 
@@ -305,9 +348,9 @@ class Chain:
             self,
             contract_function: ContractFunction,
             gas: int = None,
-            from_: Address | ChecksumAddress | str = None,
-            to: Address | ChecksumAddress | str = None,
-            nonce: Nonce = None,
+            address_from: Address | ChecksumAddress | str = None,
+            address_to: Address | ChecksumAddress | str = None,
+            nonce: Nonce | int = None,
             value: Wei | int = None,
             # legacy pricing
             gas_price: Wei | int = None,
@@ -316,7 +359,8 @@ class Chain:
             max_priority_fee_per_gas: Wei = None,
             tx_speed: TxSpeed = TxSpeed.NORMAL,
     ) -> TxParams:
-        tx_params = self._build_tx_base_params(gas, from_, to, nonce, value)
+        gas_price = gas_price or self.gas_price
+        tx_params = self._build_tx_base_params(gas, address_from, address_to, nonce, value)
         gas = contract_function.estimate_gas(tx_params)
         tx_params = self._build_tx_base_params(gas, tx_params=tx_params)
         tx_params = self._build_tx_fee_params(
@@ -341,7 +385,7 @@ class Chain:
             *,
             value: Wei = None,
     ) -> tuple[TxReceipt, HexStr]:
-        tx = self.build_tx(fn, from_=account.address, value=value)
+        tx = self.build_tx(fn, address_from=account.address, value=value)
         tx_hash = self.sign_and_send_tx(account, tx)
         tx_receipt = self.wait_for_tx_receipt(tx_hash)
         return tx_receipt, tx_hash
