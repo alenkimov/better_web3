@@ -5,6 +5,7 @@ from eth_typing import ChecksumAddress
 
 from better_web3.utils.eth import sign_message, to_checksum_addresses
 from better_web3.utils.file import load_lines
+from better_web3.utils.other import cache
 
 
 def addresses_from_file(filepath: Path | str) -> list["ChecksumAddress"]:
@@ -39,6 +40,11 @@ class Wallet:
         return info
 
     @classmethod
+    def generate(cls, extra_entropy: str = "", name: str = None) -> "Wallet":
+        account = Account.create(extra_entropy)
+        return cls(account, name=name)
+
+    @classmethod
     def from_key(cls, private_key: str, name: str = None) -> "Wallet":
         account = Account.from_key(private_key)
         return cls(account, name=name)
@@ -54,12 +60,20 @@ class Wallet:
         return cls(account, name=name)
 
     @property
+    @cache
     def private_key(self) -> str:
         return self.account.key.hex()
 
     @property
     def address(self) -> ChecksumAddress:
         return self.account.address
+
+    @property
+    @cache
+    def short_address(self) -> str:
+        start = self.account.address[:6]
+        end = self.account.address[-1:-4:-1]
+        return f"{start}...{end}"
 
     def sign_message(self, message: str) -> str:
         return sign_message(message, self.account)
