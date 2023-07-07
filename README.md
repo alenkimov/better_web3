@@ -1,5 +1,5 @@
 # Better Web3.py
-[ [Telegram](https://t.me/Cum_Insider) ] [ [PyPi](https://pypi.org/project/better-web3) ]
+[ [Telegram](https://t.me/cum_insider) ] [ [PyPi](https://pypi.org/project/better-web3) ]
 
 ```bash
 pip install better-web3
