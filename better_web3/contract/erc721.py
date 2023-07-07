@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Iterable
 from eth_typing import ChecksumAddress, BlockIdentifier
 from eth_utils import to_checksum_address
 
-from .abi import ERC721_ABI
+from ._abi import ERC721_ABI
 from .contract import Contract
 from ..utils import cache
 

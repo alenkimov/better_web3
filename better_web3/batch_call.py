@@ -112,7 +112,7 @@ class BatchCallManager(Manager):
             raise_exceptions: bool = True,
             batch_size: int = None,
             delay: int = None,
-    ) -> Iterable:
+    ) -> Iterable[dict[str: dict, str: Any]]:
         if not payloads:
             return []
 
@@ -122,9 +122,12 @@ class BatchCallManager(Manager):
         for chunk in chunks(payloads, batch_size):
             response = self.http_session.post(self.rpc, json=chunk, timeout=self.slow_timeout)
             results = response.json()
-            for result in process_results(results, raise_exceptions=raise_exceptions):
-                #  TODO возвращать в следующием формате:
-                #       {"payload": payload, "result": result}
+            for payload, response in zip(chunk, process_results(results, raise_exceptions=raise_exceptions)):
+                result = {"payload": payload}
+                if isinstance(response, JSONRPCException):
+                    result["exception"] = response
+                else:
+                    result["result"] = response
                 yield result
             time.sleep(delay)  # TODO Сделать это умнее
 
@@ -167,8 +170,13 @@ class BatchCallManager(Manager):
             delay=delay,
         )
         results = process_eth_call_results(results, output_types, raise_exceptions=raise_exceptions)
-        for contract_function, result in zip(contract_functions, results):
-            yield {"contract_function": contract_function, "result": result}
+        for contract_function, response in zip(contract_functions, results):
+            result = {"contract_function": contract_function}
+            if isinstance(response, JSONRPCException):
+                result["exception"] = response
+            else:
+                result["result"] = response
+            yield result
 
     ################################################################################
     # Batch request shortcuts
@@ -187,10 +195,13 @@ class BatchCallManager(Manager):
                     for i, address in enumerate(addresses)]
         balances = self.request(payloads, **kwargs)
 
-        for address, balance in zip(addresses, balances):
-            if not isinstance(balance, JSONRPCException):
-                balance = Wei(int(balance, 16))
-            yield {"address": address, "balance": balance}
+        for address, response in zip(addresses, balances):
+            balance_data = {"address": address}
+            if "exception" in response:
+                balance_data["exception"] = response["exception"]
+            else:
+                balance_data["balance"] = Wei(int(response["result"], 16))
+            yield balance_data
 
     def txs(
             self,
@@ -204,8 +215,13 @@ class BatchCallManager(Manager):
                     for i, tx_hash in enumerate(tx_hashes)]
         txs = self.request(payloads, **kwargs)
 
-        for tx_hash, tx in zip(tx_hashes, txs):
-            yield {"tx_hash": tx_hash, "tx": transaction_result_formatter(tx)}
+        for tx_hash, response in zip(tx_hashes, txs):
+            tx_data = {"tx_hash": tx_hash}
+            if "exception" in response:
+                tx_data["exception"] = response["exception"]
+            else:
+                tx_data["tx"] = transaction_result_formatter(response["result"])
+            yield tx_data
 
     def tx_receipts(
             self,
@@ -219,15 +235,20 @@ class BatchCallManager(Manager):
                     for i, tx_hash in enumerate(tx_hashes)]
         tx_receipts = self.request(payloads, **kwargs)
 
-        for tx_hash, tx_receipt in zip(tx_hashes, tx_receipts):
-            yield {"tx_hash": tx_hash, "tx": receipt_formatter(tx_receipt)}
+        for tx_hash, response in zip(tx_hashes, tx_receipts):
+            tx_receipt_data = {"tx_hash": tx_hash}
+            if "exception" in response:
+                tx_receipt_data["exception"] = response["exception"]
+            else:
+                tx_receipt_data["tx"] = receipt_formatter(response["result"])
+            yield tx_receipt_data
 
     def blocks(
             self,
             block_identifiers: Iterable[BlockIdentifier],
             full_transactions: bool = False,
             **kwargs,
-    ) -> Iterable[dict[str: BlockIdentifier, str: BlockData | JSONRPCException]]:
+    ) -> Iterable[dict[str: BlockIdentifier, str: BlockData | None | JSONRPCException]]:
         if not block_identifiers:
             return []
 
@@ -240,8 +261,12 @@ class BatchCallManager(Manager):
 
         blocks_data = self.request(payloads, **kwargs)
 
-        for block_identifier, block_data in zip(block_identifiers, blocks_data):
-            if block_data:
-                if "extraData" in block_data:
+        for block_identifier, response in zip(block_identifiers, blocks_data):
+            block_data = {"block_identifier": block_identifier}
+            if "exception" in response:
+                block_data["exception"] = response["exception"]
+            else:
+                if "extraData" in response["exception"]:
                     del block_data["extraData"]  # Remove extraData, raises some problems on parsing
-                yield {"block_identifier": block_identifier, "block": receipt_formatter(block_formatter(block_data))}
+                block_data["block"] = receipt_formatter(block_formatter(response["result"]))
+            yield block_data

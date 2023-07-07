@@ -1,7 +1,18 @@
+from pathlib import Path
+
 from eth_account.account import Account, LocalAccount
 from eth_typing import ChecksumAddress
 
-from better_web3.utils.eth import sign_message
+from better_web3.utils.eth import sign_message, to_checksum_addresses
+from better_web3.utils.file import load_lines
+
+
+def addresses_from_file(filepath: Path | str) -> list["ChecksumAddress"]:
+    return to_checksum_addresses([address.strip() for address in load_lines(filepath)])
+
+
+def wallets_from_file(filepath: Path | str) -> list["Wallet"]:
+    return [Wallet.from_key(private_key) for private_key in load_lines(filepath)]
 
 
 class Wallet:

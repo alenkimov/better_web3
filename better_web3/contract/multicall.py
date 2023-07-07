@@ -12,7 +12,7 @@ from web3._utils.normalizers import BASE_RETURN_NORMALIZERS
 from web3.contract.contract import ContractFunction
 from web3.exceptions import ContractLogicError
 
-from .abi import MULTICALL_V3_ABI
+from ._abi import MULTICALL_V3_ABI
 from .contract import Contract
 
 from typing import TYPE_CHECKING
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from ..chain import Chain
 
 
-MULTICALL_V3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11"
+MULTICALL_V3_CONTRACT_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11"
 
 
 @dataclass
@@ -46,7 +46,7 @@ class Multicall(Contract):
         address: ChecksumAddress | str = None,
         abi=None,
     ):
-        address = address or MULTICALL_V3_ADDRESS
+        address = address or MULTICALL_V3_CONTRACT_ADDRESS
         abi = abi or MULTICALL_V3_ABI
         super().__init__(chain, address, abi)
 

@@ -1,8 +1,9 @@
+from dataclasses import dataclass
+
 import requests
 from eth_account.signers.local import LocalAccount
 from eth_typing import BlockNumber, ChecksumAddress, HexStr, Address, Hash32
 from hexbytes import HexBytes
-from pydantic import BaseModel
 from requests.adapters import HTTPAdapter
 from web3 import HTTPProvider, Web3
 from web3.contract.contract import ContractFunction
@@ -18,12 +19,13 @@ from web3.types import (
 )
 
 from .batch_call import BatchCallManager
-from .contract import Contract, Multicall, ERC20, ERC721
+from .contract import Contract, Multicall, Disperse, ERC20, ERC721
 from .enums import TxSpeed
 from .utils import cache, link_by_tx_hash
 
 
-class NativeToken(BaseModel):
+@dataclass
+class NativeToken:
     symbol: str = "ETH"
     decimals: int = 18
 
@@ -47,9 +49,11 @@ class Chain:
             # Middlewares
             use_poa_middleware: bool = True,
             # Multicall
-            multicall_v3_address: ChecksumAddress | str = None,
+            multicall_v3_contract_address: ChecksumAddress | str = None,
+            # Disperse
+            disperse_contract_address: ChecksumAddress | str = None,
             # Batch request
-            batch_request_size: int = 500,
+            batch_request_size: int = 10,
             batch_request_delay: int = 1,
             # Tx params
             gas_price: Wei | int = None,
@@ -74,7 +78,9 @@ class Chain:
             self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
             self.slow_w3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
-        self.multicall = Multicall(chain=self, address=multicall_v3_address)
+        self.multicall = Multicall(chain=self, address=multicall_v3_contract_address)
+        self.disperse = Disperse(chain=self, address=disperse_contract_address)
+
         self.batch_request = BatchCallManager(
             self, batch_request_size, batch_request_delay)
 

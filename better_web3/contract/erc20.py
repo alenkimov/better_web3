@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Iterable
 from eth_typing import ChecksumAddress, BlockIdentifier
 from web3.types import Wei
 
-from .abi import ERC20_ABI
+from ._abi import ERC20_ABI
 from .contract import Contract
 from ..utils import cache
 
