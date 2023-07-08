@@ -1,12 +1,8 @@
 import json
 from typing import Iterable
 from itertools import islice
-from functools import lru_cache
 
 from eth_typing import HexStr
-
-
-cache = lru_cache(maxsize=None)
 
 
 def chunks(elements: Iterable, n: int) -> Iterable[list]:

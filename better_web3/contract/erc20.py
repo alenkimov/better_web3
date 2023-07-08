@@ -1,3 +1,4 @@
+from functools import cached_property
 from typing import TYPE_CHECKING, Iterable
 
 from eth_typing import ChecksumAddress, BlockIdentifier
@@ -5,7 +6,6 @@ from web3.types import Wei
 
 from ._abi import ERC20_ABI
 from .contract import Contract
-from ..utils import cache
 
 if TYPE_CHECKING:
     from ..chain import Chain
@@ -21,18 +21,15 @@ class ERC20(Contract):
         abi = abi or ERC20_ABI
         super().__init__(chain, address, abi)
 
-    @property
-    @cache
+    @cached_property
     def name(self) -> str:
         return self.functions.name().call()
 
-    @property
-    @cache
+    @cached_property
     def symbol(self) -> str:
         return self.functions.symbol().call()
 
-    @property
-    @cache
+    @cached_property
     def decimals(self) -> int:
         return self.functions.decimals().call()
 

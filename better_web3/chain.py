@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from functools import cached_property
 
 import requests
 from eth_account.signers.local import LocalAccount
@@ -21,7 +22,7 @@ from web3.types import (
 from .batch_call import BatchCallManager
 from .contract import Contract, Multicall, Disperse, ERC20, ERC721
 from .enums import TxSpeed
-from .utils import cache, link_by_tx_hash
+from .utils import link_by_tx_hash
 
 
 @dataclass
@@ -144,18 +145,15 @@ class Chain:
     # Shortcuts
     ################################################################################
 
-    @property
-    @cache
+    @cached_property
     def chain_id(self) -> int:
         return self.w3.eth.chain_id
 
-    @property
-    @cache
+    @cached_property
     def client_version(self) -> str:
         return self.w3.client_version
 
-    @property
-    @cache
+    @cached_property
     def is_eip1559_supported(self) -> bool:
         """
         :return: True if EIP1559 is supported by the node, False otherwise

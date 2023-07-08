@@ -1,3 +1,4 @@
+from functools import cached_property
 from pathlib import Path
 
 from eth_account.account import Account, LocalAccount
@@ -5,7 +6,6 @@ from eth_typing import ChecksumAddress
 
 from better_web3.utils.eth import sign_message, to_checksum_addresses
 from better_web3.utils.file import load_lines
-from better_web3.utils.other import cache
 
 
 def addresses_from_file(filepath: Path | str) -> list["ChecksumAddress"]:
@@ -59,17 +59,15 @@ class Wallet:
         account = Account.from_key(mnemonic, passphrase)
         return cls(account, name=name)
 
-    @property
-    @cache
+    @cached_property
     def private_key(self) -> str:
         return self.account.key.hex()
 
-    @property
+    @cached_property
     def address(self) -> ChecksumAddress:
         return self.account.address
 
-    @property
-    @cache
+    @cached_property
     def short_address(self) -> str:
         start = self.account.address[:6]
         end = self.account.address[-1:-4:-1]
