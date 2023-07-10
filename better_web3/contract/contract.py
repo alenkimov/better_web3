@@ -5,6 +5,7 @@ from eth_utils import to_checksum_address
 from web3 import Web3
 from web3.contract.contract import Contract as Web3Contract
 from web3.contract.contract import ContractEvents, ContractFunctions
+from web3.types import ABI
 
 if TYPE_CHECKING:
     from ..chain import Chain
@@ -30,11 +31,11 @@ class Contract:
         return self._contract
 
     @property
-    def address(self) -> str:
+    def address(self) -> ChecksumAddress:
         return self._contract.address
 
     @property
-    def abi(self):
+    def abi(self) -> ABI:
         return self._contract.abi
 
     @property
