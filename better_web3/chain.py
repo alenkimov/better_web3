@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from functools import cached_property
+from time import sleep
 
 import requests
 from eth_account.signers.local import LocalAccount
@@ -38,6 +39,7 @@ class Chain:
             *,
             name: str = "EVM Chain",
             is_testnet: bool = False,
+            use_eip1559: bool = True,
             # Native token
             symbol: str = "ETH",
             decimals: int = 18,
@@ -64,6 +66,7 @@ class Chain:
         self.is_testnet = is_testnet
         self.token = NativeToken(symbol=symbol, decimals=decimals)
         self.explorer_url = explorer_url
+        self.use_eip1559 = use_eip1559
 
         self.http_session = self._prepare_http_session(retry_count)
         self.timeout = provider_timeout
@@ -123,9 +126,12 @@ class Chain:
     def rpc(self):
         return self._rpc
 
-    def get_link_by_tx_hash(self, tx_hash: HexStr | str):
+    def get_link_by_tx_hash(self, tx_hash: HexBytes | HexStr | str):
         if self.explorer_url is None:
             raise ValueError("Set explorer_url before using this method")
+
+        if isinstance(tx_hash, HexBytes):
+            tx_hash = tx_hash.hex()
         return link_by_tx_hash(self.explorer_url, tx_hash)
 
     ################################################################################
@@ -195,7 +201,11 @@ class Chain:
                  TransactionNotFound:
                  Raised when a tx hash used to look up a tx in a jsonrpc call cannot be found.
         """
-        return self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout, poll_latency)
+        tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout, poll_latency)
+
+        # Add extra sleep to let tx propogate correctly
+        sleep(1)
+        return tx_receipt
 
     def get_block(
             self,
@@ -258,7 +268,7 @@ class Chain:
             max_priority_fee_per_gas: Wei = None,
             tx_speed: TxSpeed = TxSpeed.NORMAL,
     ):
-        ...  # TODO Реализовать метод Chain.transfer_all()
+        raise NotImplementedError  # TODO Реализовать метод Chain.transfer_all()
 
     ################################################################################
     # Gas price shortcuts
@@ -288,6 +298,12 @@ class Chain:
     ################################################################################
     # Working with transactions
     ################################################################################
+
+    def _send_tx(self, tx: TxParams) -> HexBytes:
+        return self.w3.eth.send_transaction(tx)
+
+    def _send_raw_tx(self, raw_tx: bytes | HexStr) -> HexBytes:
+        return self.w3.eth.send_raw_transaction(bytes(raw_tx))
 
     def _build_tx_base_params(
             self,
@@ -336,7 +352,10 @@ class Chain:
             tx_params = dict()
         tx_params = tx_params.copy()
 
-        if self.is_eip1559_supported and gas_price is None:
+        if (self.is_eip1559_supported and
+                ((gas_price is None and self.use_eip1559)
+                 or max_fee_per_gas is not None
+                 or max_priority_fee_per_gas is not None)):
             if max_fee_per_gas is None or max_priority_fee_per_gas is None:
                 estimated_max_fee_per_gas, estimated_max_priority_fee_per_gas = self.estimate_eip1559_fees(tx_speed)
                 max_fee_per_gas = max_fee_per_gas or estimated_max_fee_per_gas
@@ -359,8 +378,8 @@ class Chain:
             # legacy pricing
             gas_price: Wei | int = None,
             # dynamic fee pricing
-            max_fee_per_gas: Wei = None,
-            max_priority_fee_per_gas: Wei = None,
+            max_fee_per_gas: Wei | int = None,
+            max_priority_fee_per_gas: Wei | int = None,
             tx_speed: TxSpeed = TxSpeed.NORMAL,
     ) -> TxParams:
         gas_price = gas_price or self.gas_price
@@ -376,20 +395,30 @@ class Chain:
         tx_hash = self._send_raw_tx(signed_tx.rawTransaction)
         return HexStr(tx_hash.hex())
 
-    def _send_tx(self, tx: TxParams) -> HexBytes:
-        return self.w3.eth.send_transaction(tx)
-
-    def _send_raw_tx(self, raw_tx: bytes | HexStr) -> HexBytes:
-        return self.w3.eth.send_raw_transaction(bytes(raw_tx))
-
     def execute_fn(
             self,
             account: LocalAccount,
             fn: ContractFunction,
             *,
-            value: Wei = None,
-    ) -> tuple[TxReceipt, HexStr]:
-        tx = self.build_tx(fn, address_from=account.address, value=value)
+            gas: int = None,
+            nonce: Nonce | int = None,
+            value: Wei | int = None,
+            # legacy pricing
+            gas_price: Wei | int = None,
+            # dynamic fee pricing
+            max_fee_per_gas: Wei | int = None,
+            max_priority_fee_per_gas: Wei | int = None,
+            tx_speed: TxSpeed = TxSpeed.NORMAL,
+    ) -> HexStr:
+        tx = self.build_tx(
+            fn,
+            gas=gas,
+            nonce=nonce,
+            value=value,
+            gas_price=gas_price,
+            max_fee_per_gas=max_fee_per_gas,
+            max_priority_fee_per_gas=max_priority_fee_per_gas,
+            tx_speed=tx_speed,
+        )
         tx_hash = self.sign_and_send_tx(account, tx)
-        tx_receipt = self.wait_for_tx_receipt(tx_hash)
-        return tx_receipt, tx_hash
+        return tx_hash
