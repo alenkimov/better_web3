@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Iterable
 from hexbytes import HexBytes
 
@@ -8,6 +9,7 @@ from eth_utils import to_checksum_address
 from eth_typing import AnyAddress, ChecksumAddress
 from web3.types import BlockParams, BlockIdentifier, HexStr
 
+from .file import load_lines
 
 BLOCK_PARAMS = ("latest", "earliest", "pending", "safe", "finalized")
 
@@ -32,6 +34,10 @@ def decode_string_or_bytes32(data: bytes) -> str:
 
 def to_checksum_addresses(addresses: Iterable[AnyAddress or str]) -> list[ChecksumAddress]:
     return [to_checksum_address(address) for address in addresses]
+
+
+def addresses_from_file(filepath: Path | str) -> list["ChecksumAddress"]:
+    return to_checksum_addresses([address.strip() for address in load_lines(filepath)])
 
 
 GAS_CALL_DATA_ZERO_BYTE = 4

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "better-web3"
-version = "1.3.2"
+version = "1.4.0"
 description = "Chains, Contracts(Multicall, Disperse, ERC20/ERC721), batch calls and other.."
 authors = ["Alen <alen.kimov@gmail.com>"]
 readme = "README.md"
