@@ -87,8 +87,8 @@ class Wallet:
         tx_fee_wei = tx_receipt.gasUsed * tx_receipt.effectiveGasPrice
         tx_fee = from_wei(tx_fee_wei, "ether")
         message += f"\n\tFee: {tx_fee} {chain.token.symbol}"
-        nonce = tx_receipt.transactionIndex
-        message += f"\n\tNonce: {nonce}"
+        # position = tx_receipt.transactionIndex
+        # message += f"\n\tPosition (Transaction index): {position}"
         status = tx_receipt.status
         message += f"\n\tStatus: {status}"
         return message
