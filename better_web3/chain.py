@@ -412,6 +412,7 @@ class Chain:
     ) -> HexStr:
         tx = self.build_tx(
             fn,
+            address_from=account.address,
             gas=gas,
             nonce=nonce,
             value=value,
