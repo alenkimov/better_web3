@@ -30,7 +30,7 @@ class Wallet:
 
     def __str__(self) -> str:
         info = f"[{self.number:03}] [{self.address}]"
-        if self.tags: info += f" ({', '.join(self.tags)})"
+        if self.tags: info += f" ({', '.join((str(tag) for tag in self.tags))})"
         return info
 
     @classmethod

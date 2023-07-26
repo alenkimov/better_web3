@@ -22,7 +22,6 @@ from web3.types import (
 
 from .batch_call import BatchCallManager
 from .contract import Contract, Multicall, Disperse, ERC20, ERC721
-from .enums import TxSpeed
 from .utils import link_by_tx_hash
 
 
@@ -59,7 +58,12 @@ class Chain:
             batch_request_size: int = 10,
             batch_request_delay: int = 1,
             # Tx params
+            gas: int = None,
+            # legacy pricing
             gas_price: Wei | int = None,
+            # dynamic fee pricing
+            max_fee_per_gas: Wei | int = None,
+            max_priority_fee_per_gas: Wei | int = None,
     ):
         self._rpc = rpc
         self.name = name
@@ -70,17 +74,13 @@ class Chain:
 
         self.http_session = self._prepare_http_session(retry_count)
         self.timeout = provider_timeout
-        self.slow_timeout = slow_provider_timeout
 
         self.w3_provider = self._create_http_provider(provider_timeout)
-        self.w3_slow_provider = self._create_http_provider(slow_provider_timeout)
 
         self.w3 = Web3(provider=self.w3_provider)
-        self.slow_w3 = Web3(provider=self.w3_slow_provider)
 
         if use_poa_middleware:
             self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
-            self.slow_w3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
         self.multicall = Multicall(chain=self, address=multicall_v3_contract_address)
         self.disperse = Disperse(chain=self, address=disperse_contract_address)
@@ -88,7 +88,10 @@ class Chain:
         self.batch_request = BatchCallManager(
             self, batch_request_size, batch_request_delay)
 
-        self.gas_price = gas_price
+        self.default_gas = gas
+        self.default_gas_price = gas_price
+        self.default_max_fee_per_gas = max_fee_per_gas
+        self.default_max_priority_fee_per_gas = max_priority_fee_per_gas
 
     def _create_http_provider(self, timeout: int) -> HTTPProvider:
         return HTTPProvider(
@@ -242,16 +245,15 @@ class Chain:
             # legacy pricing
             gas_price: Wei | int = None,
             # dynamic fee pricing
-            max_fee_per_gas: Wei = None,
-            max_priority_fee_per_gas: Wei = None,
-            tx_speed: TxSpeed = TxSpeed.NORMAL,
+            max_fee_per_gas: Wei | int = None,
+            max_priority_fee_per_gas: Wei | int = None,
     ) -> HexStr:
-        gas_price = gas_price or self.gas_price
+        gas_price = gas_price or self.default_gas_price
         tx_params = self._build_tx_base_params(gas, account_from.address, address_to, nonce, value)
         gas = self.w3.eth.estimate_gas(tx_params)
         tx_params = self._build_tx_base_params(gas, tx_params=tx_params)
         tx_params = self._build_tx_fee_params(
-            gas_price, max_fee_per_gas, max_priority_fee_per_gas, tx_speed, tx_params=tx_params)
+            gas_price, max_fee_per_gas, max_priority_fee_per_gas, tx_params=tx_params)
         return self.sign_and_send_tx(account_from, tx_params)
 
     def transfer_all(
@@ -264,9 +266,8 @@ class Chain:
             # legacy pricing
             gas_price: Wei | int = None,
             # dynamic fee pricing
-            max_fee_per_gas: Wei = None,
-            max_priority_fee_per_gas: Wei = None,
-            tx_speed: TxSpeed = TxSpeed.NORMAL,
+            max_fee_per_gas: Wei | int = None,
+            max_priority_fee_per_gas: Wei | int = None,
     ):
         raise NotImplementedError  # TODO Реализовать метод Chain.transfer_all()
 
@@ -274,26 +275,11 @@ class Chain:
     # Gas price shortcuts
     ################################################################################
 
-    def get_gas_price(self) -> Wei:
+    def request_gas_price(self) -> Wei:
         return self.w3.eth.gas_price
 
-    def estimate_eip1559_fees(self, tx_speed: TxSpeed = TxSpeed.NORMAL) -> tuple[int, int]:
-        tx_speed_percentiles = {
-            TxSpeed.SLOWEST: 0,
-            TxSpeed.VERY_SLOW: 10,
-            TxSpeed.SLOW: 25,
-            TxSpeed.NORMAL: 50,
-            TxSpeed.FAST: 75,
-            TxSpeed.VERY_FAST: 90,
-            TxSpeed.FASTEST: 100,
-        }
-        percentile = tx_speed_percentiles[tx_speed]
-        result = self.w3.eth.fee_history(1, "latest", reward_percentiles=[percentile])
-        # Get next block `base_fee_per_gas`
-        base_fee_per_gas = result["baseFeePerGas"][-1]
-        max_priority_fee_per_gas = result["reward"][0][0]
-        max_fee_per_gas = base_fee_per_gas + max_priority_fee_per_gas
-        return max_fee_per_gas, max_priority_fee_per_gas
+    def request_max_priority_fee(self) -> Wei:
+        return self.w3.eth.max_priority_fee
 
     ################################################################################
     # Working with transactions
@@ -311,7 +297,7 @@ class Chain:
             address_from: Address | ChecksumAddress | str = None,
             address_to: Address | ChecksumAddress | str = None,
             nonce: Nonce | int = None,
-            value: Wei = None,
+            value: Wei | int = None,
             *,
             tx_params: TxParams = None,
     ) -> TxParams:
@@ -340,11 +326,10 @@ class Chain:
     def _build_tx_fee_params(
             self,
             # legacy pricing
-            gas_price: Wei = None,
+            gas_price: Wei | int = None,
             # dynamic fee pricing
-            max_fee_per_gas: Wei = None,
-            max_priority_fee_per_gas: Wei = None,
-            tx_speed: TxSpeed = TxSpeed.NORMAL,
+            max_fee_per_gas: Wei | int = None,
+            max_priority_fee_per_gas: Wei | int = None,
             *,
             tx_params: TxParams = None,
     ) -> TxParams:
@@ -352,18 +337,17 @@ class Chain:
             tx_params = dict()
         tx_params = tx_params.copy()
 
+        max_fee_per_gas = max_fee_per_gas or self.default_max_fee_per_gas
+        max_priority_fee_per_gas = max_priority_fee_per_gas or self.default_max_priority_fee_per_gas
+
         if (self.is_eip1559_supported and
                 ((gas_price is None and self.use_eip1559)
                  or max_fee_per_gas is not None
                  or max_priority_fee_per_gas is not None)):
-            if max_fee_per_gas is None or max_priority_fee_per_gas is None:
-                estimated_max_fee_per_gas, estimated_max_priority_fee_per_gas = self.estimate_eip1559_fees(tx_speed)
-                max_fee_per_gas = max_fee_per_gas or estimated_max_fee_per_gas
-                max_priority_fee_per_gas = max_priority_fee_per_gas or estimated_max_priority_fee_per_gas
-            tx_params["maxFeePerGas"] = max_fee_per_gas
-            tx_params["maxPriorityFeePerGas"] = max_priority_fee_per_gas
+            tx_params["maxFeePerGas"] = max_fee_per_gas or self.request_gas_price()
+            tx_params["maxPriorityFeePerGas"] = max_priority_fee_per_gas or self.request_max_priority_fee()
         else:
-            tx_params["gasPrice"] = gas_price or self.get_gas_price()
+            tx_params["gasPrice"] = gas_price or self.request_gas_price()
 
         return tx_params
 
@@ -380,14 +364,13 @@ class Chain:
             # dynamic fee pricing
             max_fee_per_gas: Wei | int = None,
             max_priority_fee_per_gas: Wei | int = None,
-            tx_speed: TxSpeed = TxSpeed.NORMAL,
     ) -> TxParams:
-        gas_price = gas_price or self.gas_price
+        gas_price = gas_price or self.default_gas_price
         tx_params = self._build_tx_base_params(gas, address_from, address_to, nonce, value)
         gas = contract_function.estimate_gas(tx_params)
         tx_params = self._build_tx_base_params(gas, tx_params=tx_params)
         tx_params = self._build_tx_fee_params(
-            gas_price, max_fee_per_gas, max_priority_fee_per_gas, tx_speed, tx_params=tx_params)
+            gas_price, max_fee_per_gas, max_priority_fee_per_gas, tx_params=tx_params)
         return contract_function.build_transaction(tx_params)
 
     def sign_and_send_tx(self, account: LocalAccount, tx: TxParams) -> HexStr:
@@ -408,7 +391,6 @@ class Chain:
             # dynamic fee pricing
             max_fee_per_gas: Wei | int = None,
             max_priority_fee_per_gas: Wei | int = None,
-            tx_speed: TxSpeed = TxSpeed.NORMAL,
     ) -> HexStr:
         tx = self.build_tx(
             fn,
@@ -419,7 +401,6 @@ class Chain:
             gas_price=gas_price,
             max_fee_per_gas=max_fee_per_gas,
             max_priority_fee_per_gas=max_priority_fee_per_gas,
-            tx_speed=tx_speed,
         )
         tx_hash = self.sign_and_send_tx(account, tx)
         return tx_hash

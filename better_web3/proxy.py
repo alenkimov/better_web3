@@ -109,7 +109,7 @@ class Proxy:
 
     def __str__(self) -> str:
         info = f"[{self.number:03}] [{self.ip:>15}:{str(self.port):<5}]"
-        if self.tags: info += f" ({', '.join(self.tags)})"
+        if self.tags: info += f" ({', '.join((str(tag) for tag in self.tags))})"
         return info
 
     def __hash__(self):
