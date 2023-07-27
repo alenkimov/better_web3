@@ -58,7 +58,6 @@ class Chain:
             batch_request_size: int = 10,
             batch_request_delay: int = 1,
             # Tx params
-            gas: int = None,
             # legacy pricing
             gas_price: Wei | int = None,
             # dynamic fee pricing
@@ -88,7 +87,6 @@ class Chain:
         self.batch_request = BatchCallManager(
             self, batch_request_size, batch_request_delay)
 
-        self.default_gas = gas
         self.default_gas_price = gas_price
         self.default_max_fee_per_gas = max_fee_per_gas
         self.default_max_priority_fee_per_gas = max_priority_fee_per_gas

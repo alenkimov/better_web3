@@ -86,10 +86,8 @@ class Manager:
         self.chain = chain
         self.rpc = chain.rpc
         self.w3 = chain.w3
-        self.slow_w3 = chain.slow_w3
         self.http_session = chain.http_session
         self.timeout = chain.timeout
-        self.slow_timeout = chain.slow_timeout
 
 
 class BatchCallManager(Manager):
@@ -119,7 +117,7 @@ class BatchCallManager(Manager):
         delay = delay or self.batch_request_delay
 
         for chunk in chunks(payloads, batch_size):
-            response = self.http_session.post(self.rpc, json=chunk, timeout=self.slow_timeout)
+            response = self.http_session.post(self.rpc, json=chunk, timeout=self.timeout)
             results = response.json()
             for payload, response in zip(chunk, process_results(results, raise_exceptions=raise_exceptions)):
                 result = {"payload": payload}
