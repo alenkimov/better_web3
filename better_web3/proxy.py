@@ -30,7 +30,6 @@ class Proxy:
     password : str, optional
         Password for the proxy server, by default None
     """
-    _number = 1
 
     def __init__(
             self,
@@ -48,8 +47,6 @@ class Proxy:
         self.login = login
         self.password = password
         self.tags = set(tags) if tags else set()
-        self.number = Proxy._number
-        Proxy._number += 1
 
     @classmethod
     def from_str(cls, proxy: str, *, tags: Iterable[str] = None) -> "Proxy":
@@ -108,7 +105,7 @@ class Proxy:
         return f"Proxy(ip={self.ip}, port={self.port})"
 
     def __str__(self) -> str:
-        info = f"[{self.number:03}] [{self.ip:>15}:{str(self.port):<5}]"
+        info = f"[{self.ip:>15}:{str(self.port):<5}]"
         if self.tags: info += f" ({', '.join((str(tag) for tag in self.tags))})"
         return info
 

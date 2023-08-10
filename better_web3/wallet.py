@@ -12,8 +12,6 @@ from .utils import sign_message, load_lines
 
 
 class Wallet:
-    _number = 1
-
     def __init__(
             self,
             account: LocalAccount,
@@ -22,14 +20,12 @@ class Wallet:
     ):
         self.account = account
         self.tags = set(tags) if tags else set()
-        self.number = Wallet._number
-        Wallet._number += 1
 
     def __repr__(self):
         return f"Wallet(address={self.address})"
 
     def __str__(self) -> str:
-        info = f"[{self.number:03}] [{self.address}]"
+        info = f"[{self.address}]"
         if self.tags: info += f" ({', '.join((str(tag) for tag in self.tags))})"
         return info
 

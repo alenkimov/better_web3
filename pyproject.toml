@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "better-web3"
-version = "1.5.2"
+version = "1.5.3"
 description = "Chains, Contracts(Multicall, Disperse, ERC20/ERC721), batch calls and other.."
 authors = ["Alen <alen.kimov@gmail.com>"]
 readme = "README.md"
@@ -8,7 +8,7 @@ packages = [{include = "better_web3"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
-web3 = "^6.7.0"
+web3 = "^6.8.0"
 
 
 [build-system]
