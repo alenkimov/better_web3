@@ -3,8 +3,11 @@ from typing import TYPE_CHECKING
 from eth_typing import ChecksumAddress
 from eth_utils import to_checksum_address
 from web3 import Web3
-from web3.contract.contract import Contract as Web3Contract
-from web3.contract.contract import ContractEvents, ContractFunctions
+from web3.contract.async_contract import (
+    AsyncContract,
+    AsyncContractFunctions,
+    AsyncContractEvents,
+)
 from web3.types import ABI
 
 if TYPE_CHECKING:
@@ -16,7 +19,7 @@ class Contract:
         if isinstance(address, str):
             address = to_checksum_address(address)
         self._chain = chain
-        self._contract = self._chain.w3.eth.contract(address, abi=abi)
+        self._contract: AsyncContract = self._chain.w3.eth.contract(address, abi=abi)
 
     @property
     def w3(self) -> Web3:
@@ -27,7 +30,7 @@ class Contract:
         return self._chain
 
     @property
-    def contract(self) -> Web3Contract:
+    def contract(self) -> AsyncContract:
         return self._contract
 
     @property
@@ -39,9 +42,9 @@ class Contract:
         return self._contract.abi
 
     @property
-    def functions(self) -> ContractFunctions:
+    def functions(self) -> AsyncContractFunctions:
         return self._contract.functions
 
     @property
-    def events(self) -> ContractEvents:
+    def events(self) -> AsyncContractEvents:
         return self._contract.events

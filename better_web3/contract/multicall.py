@@ -9,7 +9,7 @@ from eth_typing import BlockIdentifier, BlockNumber, ChecksumAddress
 from hexbytes import HexBytes
 from web3._utils.abi import map_abi_data
 from web3._utils.normalizers import BASE_RETURN_NORMALIZERS
-from web3.contract.contract import ContractFunction
+from web3.contract.async_contract import AsyncContract, AsyncContractFunction
 from web3.exceptions import ContractLogicError
 
 from ._abi import MULTICALL_V3_ABI
@@ -52,7 +52,7 @@ class Multicall(Contract):
 
     @staticmethod
     def _build_payload(
-        contract_functions: Sequence[ContractFunction],
+        contract_functions: Sequence[AsyncContractFunction],
     ) -> tuple[list[tuple[ChecksumAddress, bytes]], list[list[Any]]]:
         targets_with_data = []
         output_types = []
@@ -94,7 +94,7 @@ class Multicall(Contract):
                 )
                 return data
 
-    def _aggregate(
+    async def _aggregate(
         self,
         targets_with_data: Sequence[tuple[ChecksumAddress, bytes]],
         block_identifier: BlockIdentifier = "latest",
@@ -106,19 +106,19 @@ class Multicall(Contract):
             {"target": target, "callData": data} for target, data in targets_with_data
         ]
         try:
-            return self.contract.functions.aggregate(aggregate_parameter).call(
+            return await self.contract.functions.aggregate(aggregate_parameter).call(
                 block_identifier=block_identifier
             )
         except (ContractLogicError, OverflowError):
             raise MulticallFailed
 
-    def aggregate(
+    async def aggregate(
         self,
-        contract_functions: Sequence[ContractFunction],
+        contract_functions: Sequence[AsyncContractFunction],
         block_identifier: BlockIdentifier = "latest",
     ) -> tuple[BlockNumber, list[Any | None]]:
         targets_with_data, output_types = self._build_payload(contract_functions)
-        block_number, results = self._aggregate(
+        block_number, results = await self._aggregate(
             targets_with_data, block_identifier=block_identifier
         )
         decoded_results = [
@@ -127,7 +127,7 @@ class Multicall(Contract):
         ]
         return block_number, decoded_results
 
-    def _try_aggregate(
+    async def _try_aggregate(
         self,
         targets_with_data: Sequence[tuple[ChecksumAddress, bytes]],
         require_success: bool = False,
@@ -138,7 +138,7 @@ class Multicall(Contract):
         ]
 
         try:
-            result = self.functions.tryAggregate(
+            result = await self.functions.tryAggregate(
                 require_success, aggregate_parameter
             ).call(block_identifier=block_identifier)
 
@@ -153,9 +153,9 @@ class Multicall(Contract):
         except (ContractLogicError, OverflowError, ValueError):
             raise MulticallFailed
 
-    def try_aggregate(
+    async def try_aggregate(
         self,
-        contract_functions: Sequence[ContractFunction],
+        contract_functions: Sequence[AsyncContractFunction],
         require_success: bool = False,
         block_identifier: BlockIdentifier = "latest",
     ) -> list[MulticallDecodedResult]:
@@ -165,7 +165,7 @@ class Multicall(Contract):
         :param require_success: If ``True``, an exception in any of the functions will stop the execution
         """
         targets_with_data, output_types = self._build_payload(contract_functions)
-        results = self._try_aggregate(
+        results = await self._try_aggregate(
             targets_with_data,
             require_success=require_success,
             block_identifier=block_identifier,

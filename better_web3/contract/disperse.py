@@ -1,5 +1,5 @@
 from eth_typing import ChecksumAddress
-from web3.contract.contract import ContractFunction
+from web3.contract.async_contract import AsyncContractFunction
 from web3.types import Wei
 
 from ._abi import DISPERSE_ABI
@@ -28,7 +28,7 @@ class Disperse(Contract):
             self,
             recipients: list[ChecksumAddress | str],
             values: list[Wei | int],
-    ) -> ContractFunction:
+    ) -> AsyncContractFunction:
         """
         disperseEther(address[] recipients, uint256[] values)
         """

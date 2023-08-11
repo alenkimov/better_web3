@@ -1,7 +1,8 @@
-import time
-from typing import Iterable, Any
+import asyncio
+from typing import Iterable, Any, AsyncIterable
 from typing import TYPE_CHECKING
 
+import aiohttp
 import eth_abi
 from eth_abi.exceptions import DecodingError
 from eth_typing import ChecksumAddress, HexStr, Address, Hash32
@@ -13,7 +14,7 @@ from web3._utils.method_formatters import (
     transaction_result_formatter,
 )
 from web3._utils.normalizers import BASE_RETURN_NORMALIZERS
-from web3.contract.contract import ContractFunction
+from web3.contract.async_contract import AsyncContractFunction
 from web3.types import (
     BlockData,
     BlockIdentifier,
@@ -86,8 +87,6 @@ class Manager:
         self.chain = chain
         self.rpc = chain.rpc
         self.w3 = chain.w3
-        self.http_session = chain.http_session
-        self.timeout = chain.timeout
 
 
 class BatchCallManager(Manager):
@@ -102,44 +101,45 @@ class BatchCallManager(Manager):
         self.batch_request_size = batch_request_size
         self.batch_request_delay = batch_request_delay
 
-    def request(
+    async def request(
             self,
             payloads: Iterable[dict],
             *,
             raise_exceptions: bool = True,
             batch_size: int = None,
             delay: int = None,
-    ) -> Iterable[dict[str: dict, str: Any]]:
+    ) -> AsyncIterable[dict[str: dict, str: Any]]:
         if not payloads:
-            return []
+            return
 
         batch_size = batch_size or self.batch_request_size
         delay = delay or self.batch_request_delay
 
-        for chunk in chunks(payloads, batch_size):
-            response = self.http_session.post(self.rpc, json=chunk, timeout=self.timeout)
-            results = response.json()
-            for payload, response in zip(chunk, process_results(results, raise_exceptions=raise_exceptions)):
-                result = {"payload": payload}
-                if isinstance(response, JSONRPCException):
-                    result["exception"] = response
-                else:
-                    result["result"] = response
-                yield result
-            time.sleep(delay)  # TODO Сделать это умнее
+        async with aiohttp.ClientSession() as session:
+            for chunk in chunks(payloads, batch_size):
+                response = await session.post(self.rpc, json=chunk)
+                results = await response.json()
+                for payload, response in zip(chunk, process_results(results, raise_exceptions=raise_exceptions)):
+                    result = {"payload": payload}
+                    if isinstance(response, JSONRPCException):
+                        result["exception"] = response
+                    else:
+                        result["result"] = response
+                    yield result
+                await asyncio.sleep(delay)
 
-    def contract_request(
+    async def contract_request(
             self,
-            contract_functions: Iterable[ContractFunction],
+            contract_functions: Iterable[AsyncContractFunction],
             block_identifier: BlockIdentifier = "latest",
             from_: ChecksumAddress | str = None,
             *,
             raise_exceptions: bool = True,
             batch_size: int = None,
             delay: int = None,
-    ) -> Iterable[dict[str: ContractFunction, str: Any]]:
+    ) -> AsyncIterable[dict[str: AsyncContractFunction, str: Any]]:
         if not contract_functions:
-            return []
+            return
 
         block_identifier = hex_block_identifier(block_identifier)
 
@@ -150,7 +150,7 @@ class BatchCallManager(Manager):
                 raise ValueError(
                     f"Missing address for batch_call in `{contract_function.fn_name}`: {contract_function}")
 
-            data = contract_function.build_transaction({"gas": 0, "gasPrice": 0})["data"]
+            data = (await contract_function.build_transaction({"gas": 0, "gasPrice": 0}))["data"]
             tx_params = {"to": contract_function.address, "data": data}
             if from_: tx_params["from"] = from_
             payloads.append(build_payload(i, "eth_call", [tx_params, block_identifier]))
@@ -158,14 +158,12 @@ class BatchCallManager(Manager):
             output_type = [output["type"] for output in contract_function.abi["outputs"]]
             output_types.append(output_type)
 
-            # fn_name = contract_function.fn_name  # For debugging purposes
-
-        results = self.request(
+        results = [result async for result in self.request(
             payloads,
             raise_exceptions=raise_exceptions,
             batch_size=batch_size,
             delay=delay,
-        )
+        )]
         results = process_eth_call_results(results, output_types, raise_exceptions=raise_exceptions)
         for contract_function, response in zip(contract_functions, results):
             result = {"contract_function": contract_function}
@@ -179,18 +177,18 @@ class BatchCallManager(Manager):
     # Batch request shortcuts
     ################################################################################
 
-    def balances(
+    async def balances(
             self,
             addresses: Iterable[ChecksumAddress | str],
             block_identifier: BlockIdentifier = "latest",
             **kwargs,
-    ) -> Iterable[dict[str: ChecksumAddress | str, str: Wei | JSONRPCException]]:
+    ) -> AsyncIterable[dict[str: ChecksumAddress | str, str: Wei | JSONRPCException]]:
         if not addresses:
-            return []
+            return
 
         payloads = [build_payload(i, "eth_getBalance", [address, hex_block_identifier(block_identifier)])
                     for i, address in enumerate(addresses)]
-        balances = self.request(payloads, **kwargs)
+        balances = [balance async for balance in self.request(payloads, **kwargs)]
 
         for address, response in zip(addresses, balances):
             balance_data = {"address": address}
@@ -200,17 +198,17 @@ class BatchCallManager(Manager):
                 balance_data["balance"] = Wei(int(response["result"], 16))
             yield balance_data
 
-    def txs(
+    async def txs(
             self,
             tx_hashes: Iterable[Hash32 | HexBytes | HexStr],
             **kwargs,
-    ) -> Iterable[dict[str: Hash32 | HexBytes | HexStr, str: TxData | JSONRPCException]]:
+    ) -> AsyncIterable[dict[str: Hash32 | HexBytes | HexStr, str: TxData | JSONRPCException]]:
         if not tx_hashes:
-            return []
+            return
 
         payloads = [build_payload(i, "eth_getTransactionByHash", [HexBytes(tx_hash).hex()])
                     for i, tx_hash in enumerate(tx_hashes)]
-        txs = self.request(payloads, **kwargs)
+        txs = [tx async for tx in self.request(payloads, **kwargs)]
 
         for tx_hash, response in zip(tx_hashes, txs):
             tx_data = {"tx_hash": tx_hash}
@@ -220,17 +218,17 @@ class BatchCallManager(Manager):
                 tx_data["tx"] = transaction_result_formatter(response["result"])
             yield tx_data
 
-    def tx_receipts(
+    async def tx_receipts(
             self,
             tx_hashes: Iterable[Hash32 | HexBytes | HexStr],
             **kwargs,
-    ) -> Iterable[dict[str: Hash32 | HexBytes | HexStr, str: TxReceipt | JSONRPCException]]:
+    ) -> AsyncIterable[dict[str: Hash32 | HexBytes | HexStr, str: TxReceipt | JSONRPCException]]:
         if not tx_hashes:
-            return []
+            return
 
         payloads = [build_payload(i, "eth_getTransactionReceipt", [HexBytes(tx_hash).hex()])
                     for i, tx_hash in enumerate(tx_hashes)]
-        tx_receipts = self.request(payloads, **kwargs)
+        tx_receipts = [tx_receipt async for tx_receipt in self.request(payloads, **kwargs)]
 
         for tx_hash, response in zip(tx_hashes, tx_receipts):
             tx_receipt_data = {"tx_hash": tx_hash}
@@ -240,14 +238,14 @@ class BatchCallManager(Manager):
                 tx_receipt_data["tx"] = receipt_formatter(response["result"])
             yield tx_receipt_data
 
-    def blocks(
+    async def blocks(
             self,
             block_identifiers: Iterable[BlockIdentifier],
             full_transactions: bool = False,
             **kwargs,
-    ) -> Iterable[dict[str: BlockIdentifier, str: BlockData | None | JSONRPCException]]:
+    ) -> AsyncIterable[dict[str: BlockIdentifier, str: BlockData | None | JSONRPCException]]:
         if not block_identifiers:
-            return []
+            return
 
         payloads = []
         for i, block_identifier in enumerate(block_identifiers):
@@ -256,7 +254,7 @@ class BatchCallManager(Manager):
             block_identifier = block_identifier if is_int else hex_block_identifier(block_identifier)
             payloads.append(build_payload(i, method, [block_identifier, full_transactions]))
 
-        blocks_data = self.request(payloads, **kwargs)
+        blocks_data = [block_data async for block_data in self.request(payloads, **kwargs)]
 
         for block_identifier, response in zip(block_identifiers, blocks_data):
             block_data = {"block_identifier": block_identifier}

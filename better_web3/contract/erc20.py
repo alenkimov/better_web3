@@ -22,35 +22,35 @@ class ERC20(Contract):
         super().__init__(chain, address, abi)
 
     @cached_property
-    def name(self) -> str:
-        return self.functions.name().call()
+    async def name(self) -> str:
+        return await self.functions.name().call()
 
     @cached_property
-    def symbol(self) -> str:
-        return self.functions.symbol().call()
+    async def symbol(self) -> str:
+        return await self.functions.symbol().call()
 
     @cached_property
-    def decimals(self) -> int:
-        return self.functions.decimals().call()
+    async def decimals(self) -> int:
+        return await self.functions.decimals().call()
 
-    def get_balance(
+    async def get_balance(
             self,
             address: ChecksumAddress,
             block_identifier: BlockIdentifier = "latest",
     ) -> Wei:
-        balance = self.functions.balanceOf(address).call(block_identifier=block_identifier)
+        balance = await self.functions.balanceOf(address).call(block_identifier=block_identifier)
         return balance
 
-    def get_balances(
+    async def get_balances(
             self,
             addresses: Iterable[ChecksumAddress],
             block_identifier: BlockIdentifier = "latest",
             **kwargs,
     ) -> Iterable[dict[str: ChecksumAddress | str, str: Wei]]:
         if not addresses:
-            return []
+            return
 
-        balances = self.chain.batch_request.contract_request(
+        balances = await self.chain.batch_request.contract_request(
             [self.functions.balanceOf(address) for address in addresses],
             block_identifier,
             **kwargs,
