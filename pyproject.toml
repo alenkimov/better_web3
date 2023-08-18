@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "better-web3"
-version = "2.1.0"
-description = "Chains, Contracts(Multicall, Disperse, ERC20/ERC721), batch calls and other.."
+version = "3.0.0"
+description = "Chains, Contracts, batch calls and other Web3 stuff!"
 authors = ["Alen <alen.kimov@gmail.com>"]
 readme = "README.md"
 packages = [{include = "better_web3"}]
@@ -9,11 +9,6 @@ packages = [{include = "better_web3"}]
 [tool.poetry.dependencies]
 python = "^3.11"
 web3 = "^6.8.0"
-pyuseragents = "^1.0.5"
-tqdm = "^4.66.1"
-aioimaplib = "^1.0.1"
-python-socks = {extras = ["asyncio"], version = "^2.3.0"}
-
 
 [build-system]
 requires = ["poetry-core"]

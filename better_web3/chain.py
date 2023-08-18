@@ -17,7 +17,6 @@ from web3.types import (
     Wei,
 )
 
-from .proxy import Proxy
 from .provider import CustomAsyncHTTPProvider
 from .batch_call import BatchCallManager
 from .contract import Contract, Multicall, Disperse, ERC20, ERC721
@@ -39,7 +38,7 @@ class Chain:
             is_testnet: bool = False,
             use_eip1559: bool = True,
             # Proxy
-            proxy: Proxy = None,
+            proxy: str = None,
             # Native token
             symbol: str = "ETH",
             decimals: int = 18,

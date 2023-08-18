@@ -25,13 +25,3 @@ def link_by_tx_hash(explorer_url: str, tx_hash: HexStr | str):
 
 def to_json(obj) -> str:
     return json.dumps(obj, separators=(',', ':'), ensure_ascii=True)
-
-
-def curry_async(async_func):
-    async def curried(*args, **kwargs):
-        def bound_async_func(*args2, **kwargs2):
-            return async_func(*(args + args2), **{**kwargs, **kwargs2})
-
-        return bound_async_func
-
-    return curried
