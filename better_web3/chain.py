@@ -216,27 +216,12 @@ class Chain:
             max_priority_fee_per_gas: Wei | int = None,
     ) -> HexStr:
         gas_price = gas_price or self.default_gas_price
-        tx_params = self._build_tx_base_params(gas, account_from.address, address_to, nonce, value)
+        tx_params = await self._build_tx_base_params(gas, account_from.address, address_to, nonce, value)
         gas = await self.w3.eth.estimate_gas(tx_params)
-        tx_params = self._build_tx_base_params(gas, tx_params=tx_params)
-        tx_params = self._build_tx_fee_params(
+        tx_params = await self._build_tx_base_params(gas, tx_params=tx_params)
+        tx_params = await self._build_tx_fee_params(
             gas_price, max_fee_per_gas, max_priority_fee_per_gas, tx_params=tx_params)
         return await self.sign_and_send_tx(account_from, tx_params)
-
-    async def transfer_all(
-            self,
-            account_from: LocalAccount,
-            address_to: Address | ChecksumAddress | str,
-            *,
-            gas: int = None,
-            nonce: Nonce | int = None,
-            # legacy pricing
-            gas_price: Wei | int = None,
-            # dynamic fee pricing
-            max_fee_per_gas: Wei | int = None,
-            max_priority_fee_per_gas: Wei | int = None,
-    ):
-        raise NotImplementedError  # TODO Реализовать метод Chain.transfer_all()
 
     ################################################################################
     # Gas price shortcuts
