@@ -7,8 +7,9 @@
 pip install better-web3
 ```
 
-- [Usage example](https://github.com/alenkimov/better_web3_scripts)
-
+More libraries of the family:
+- [better-proxy](https://github.com/alenkimov/better_proxy)
+- [better-automation](https://github.com/alenkimov/better_automation)
 
 ## Credits
 - [safe-global](https://github.com/safe-global) / [Safe-eth-py (previosly known as Gnosis-py)](https://github.com/safe-global/safe-eth-py)
