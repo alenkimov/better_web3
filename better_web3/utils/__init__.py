@@ -5,6 +5,7 @@ from .eth import (
     addresses_from_file,
     estimate_data_gas,
     hex_block_identifier,
+    link_by_tx_hash,
 )
 from .file import (
     copy_file,
@@ -13,11 +14,10 @@ from .file import (
     load_toml,
     write_lines,
     write_json,
+    to_json,
 )
 from .other import (
     chunks,
-    link_by_tx_hash,
-    to_json,
 )
 
 

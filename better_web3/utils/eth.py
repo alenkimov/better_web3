@@ -65,3 +65,8 @@ def hex_block_identifier(block_identifier: BlockIdentifier) -> HexStr | BlockPar
     elif isinstance(block_identifier, bytes):
         block_identifier = HexBytes(block_identifier).hex()
     return HexStr(block_identifier)
+
+
+def link_by_tx_hash(explorer_url: str, tx_hash: HexStr | str):
+    return f"{explorer_url}/tx/{tx_hash}"
+

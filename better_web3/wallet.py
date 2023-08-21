@@ -1,6 +1,5 @@
 from functools import cached_property
 from pathlib import Path
-from typing import Iterable
 
 from eth_account.account import Account, LocalAccount
 from eth_typing import ChecksumAddress, HexStr
@@ -12,42 +11,34 @@ from .utils import sign_message, load_lines
 
 
 class Wallet:
-    def __init__(
-            self,
-            account: LocalAccount,
-            *,
-            tags: Iterable[str] = None,
-    ):
+    def __init__(self, account: LocalAccount):
         self.account = account
-        self.tags = set(tags) if tags else set()
 
     def __repr__(self):
         return f"Wallet(address={self.address})"
 
     def __str__(self) -> str:
-        info = f"[{self.address}]"
-        if self.tags: info += f" ({', '.join((str(tag) for tag in self.tags))})"
-        return info
+        return f"[{self.address}]"
+
+    def __eq__(self, other):
+        if isinstance(other, Wallet):
+            return self.address == other.address
+        return False
 
     @classmethod
-    def generate(cls, extra_entropy: str = "", tags: Iterable[str] = None) -> "Wallet":
+    def generate(cls, extra_entropy: str = "") -> "Wallet":
         account = Account.create(extra_entropy)
-        return cls(account, tags=tags)
+        return cls(account)
 
     @classmethod
-    def from_key(cls, private_key: str, tags: Iterable[str] = None) -> "Wallet":
+    def from_key(cls, private_key: str) -> "Wallet":
         account = Account.from_key(private_key)
-        return cls(account, tags=tags)
+        return cls(account)
 
     @classmethod
-    def from_mnemonic(
-            cls,
-            mnemonic: str,
-            passphrase: str = "",
-            tags: Iterable[str] = None,
-    ) -> "Wallet":
+    def from_mnemonic(cls, mnemonic: str, passphrase: str = "") -> "Wallet":
         account = Account.from_key(mnemonic, passphrase)
-        return cls(account, tags=tags)
+        return cls(account)
 
     @classmethod
     def from_file(cls, filepath: Path | str) -> list["Wallet"]:

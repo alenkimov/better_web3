@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "better-web3"
-version = "3.0.0"
+version = "3.0.1"
 description = "Chains, Contracts, batch calls and other Web3 stuff!"
 authors = ["Alen <alen.kimov@gmail.com>"]
 readme = "README.md"
