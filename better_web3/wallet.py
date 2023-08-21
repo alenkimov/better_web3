@@ -68,7 +68,7 @@ class Wallet:
             message += f"\n\tSent: {from_wei(value, 'ether')} {chain.token.symbol}"
         return message
 
-    def tx_receipt(self, chain: Chain, tx_receipt: TxReceipt | str, value: Wei | int = None) -> str:
+    def tx_receipt(self, chain: Chain, tx_receipt: TxReceipt , value: Wei | int = None) -> str:
         tx_hash = tx_receipt.transactionHash.hex()
         message = self.tx_hash(chain, tx_hash, value)
         tx_fee_wei = tx_receipt.gasUsed * tx_receipt.effectiveGasPrice
