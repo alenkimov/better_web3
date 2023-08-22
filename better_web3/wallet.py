@@ -20,10 +20,11 @@ class Wallet:
     def __str__(self) -> str:
         return f"[{self.address}]"
 
+    def __hash__(self):
+        return hash(self.account)
+
     def __eq__(self, other):
-        if isinstance(other, Wallet):
-            return self.address == other.address
-        return False
+        return self.account == other.account
 
     @classmethod
     def generate(cls, extra_entropy: str = "") -> "Wallet":
@@ -68,7 +69,7 @@ class Wallet:
             message += f"\n\tSent: {from_wei(value, 'ether')} {chain.token.symbol}"
         return message
 
-    def tx_receipt(self, chain: Chain, tx_receipt: TxReceipt , value: Wei | int = None) -> str:
+    def tx_receipt(self, chain: Chain, tx_receipt: TxReceipt, value: Wei | int = None) -> str:
         tx_hash = tx_receipt.transactionHash.hex()
         message = self.tx_hash(chain, tx_hash, value)
         tx_fee_wei = tx_receipt.gasUsed * tx_receipt.effectiveGasPrice
