@@ -297,7 +297,7 @@ class Chain:
                  or max_fee_per_gas is not None
                  or max_priority_fee_per_gas is not None)):
             tx_params["maxFeePerGas"] = max_fee_per_gas or await self.request_gas_price()
-            tx_params["maxPriorityFeePerGas"] = max_priority_fee_per_gas or self.request_max_priority_fee()
+            tx_params["maxPriorityFeePerGas"] = max_priority_fee_per_gas or await self.request_max_priority_fee()
         else:
             tx_params["gasPrice"] = gas_price or await self.request_gas_price()
 
