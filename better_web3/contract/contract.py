@@ -21,6 +21,12 @@ class Contract:
         self._chain = chain
         self._contract: AsyncContract = self._chain.w3.eth.contract(address, abi=abi)
 
+    def __str__(self):
+        return self.address
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(address={self.address}, chain.name={self.chain.name})"
+
     @property
     def w3(self) -> Web3:
         return self._chain.w3

@@ -9,58 +9,79 @@ from web3.types import TxReceipt, Wei
 from . import Chain
 from .utils import sign_message, load_lines
 
+Account.enable_unaudited_hdwallet_features()
+
 
 class Wallet:
-    def __init__(self, account: LocalAccount):
-        self.account = account
-
-    def __repr__(self):
-        return f"Wallet(address={self.address})"
+    def __init__(self, eth_account: LocalAccount):
+        self.eth_account = eth_account
 
     def __str__(self) -> str:
-        return f"[{self.address}]"
+        return self.address
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(private_key={self.short_private_key}, address={self.address})"
 
     def __hash__(self):
-        return hash(self.account)
+        return hash(self.eth_account)
 
     def __eq__(self, other):
-        return self.account == other.account
+        return self.eth_account == other.eth_account
 
     @classmethod
     def generate(cls, extra_entropy: str = "") -> "Wallet":
-        account = Account.create(extra_entropy)
-        return cls(account)
+        eth_account = Account.create(extra_entropy)
+        return cls(eth_account)
 
     @classmethod
     def from_key(cls, private_key: str) -> "Wallet":
-        account = Account.from_key(private_key)
-        return cls(account)
+        eth_account = Account.from_key(private_key)
+        return cls(eth_account)
 
     @classmethod
     def from_mnemonic(cls, mnemonic: str, passphrase: str = "") -> "Wallet":
-        account = Account.from_key(mnemonic, passphrase)
-        return cls(account)
+        eth_account = Account.from_mnemonic(mnemonic, passphrase)
+        return cls(eth_account)
 
     @classmethod
     def from_file(cls, filepath: Path | str) -> list["Wallet"]:
-        return [cls.from_key(private_key) for private_key in load_lines(filepath)]
+        wallets = []
+        for line in load_lines(filepath):
+            wallet = None
+            try:
+                wallet = cls.from_key(line)
+            except Exception:
+                try:
+                    wallet = cls.from_mnemonic(line)
+                except Exception:
+                    pass
+
+            if wallet:
+                wallets.append(wallet)
+        return wallets
 
     @cached_property
     def private_key(self) -> str:
-        return self.account.key.hex()
+        return self.eth_account.key.hex()
 
     @cached_property
     def address(self) -> ChecksumAddress:
-        return self.account.address
+        return self.eth_account.address
+
+    @property
+    def short_private_key(self) -> str:
+        start = self.private_key[:4]
+        end = self.private_key[-4:]
+        return f"{start}**{end}"
 
     @cached_property
     def short_address(self) -> str:
-        start = self.account.address[:6]
-        end = self.account.address[-1:-4:-1]
-        return f"{start}...{end}"
+        start = self.address[:4]
+        end = self.address[-4:]
+        return f"{start}**{end}"
 
     def sign_message(self, message: str) -> str:
-        return sign_message(message, self.account)
+        return sign_message(message, self.eth_account)
 
     def tx_hash(self, chain: Chain, tx_hash: HexStr | str, value: Wei | int = None) -> str:
         tx_hash_link = chain.get_link_by_tx_hash(tx_hash)

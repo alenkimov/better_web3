@@ -89,11 +89,11 @@ class Chain:
         self.default_max_fee_per_gas = max_fee_per_gas
         self.default_max_priority_fee_per_gas = max_priority_fee_per_gas
 
-    def __repr__(self):
-        return f"Chain(rpc=\"{self.rpc})\""
-
     def __str__(self):
-        return f"<{self.name}>"
+        return f"{self.name}"
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(rpc={self.rpc}, name={self.name})"
 
     @property
     def rpc(self):
