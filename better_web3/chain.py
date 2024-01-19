@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from eth_account.signers.local import LocalAccount
 from eth_typing import BlockNumber, ChecksumAddress, HexStr, Address, Hash32
+from eth_utils import to_wei
 from hexbytes import HexBytes
 from web3 import AsyncWeb3
 from web3.contract.async_contract import AsyncContractFunction
@@ -356,3 +357,24 @@ class Chain:
         )
         tx_hash = await self.sign_and_send_tx(account, tx)
         return tx_hash
+
+
+def load_chains(chains_data: dict, ensure_chain_id=False, **chain_kwargs) -> dict[int: Chain]:
+    chains: dict[int: Chain] = {}
+    minimal_balances: dict[int: Wei] = {}
+    for net_mode, id_to_chain_data in chains_data.items():
+        is_testnet = True if net_mode == "testnet" else False
+        for chain_id, chain_data in id_to_chain_data.items():
+            chain_id = int(chain_id)
+            if "minimal_balance" in chain_data:
+                minimal_balances[chain_id] = to_wei(chain_data.pop("minimal_balance"), "ether")
+            if "gas_price" in chain_data:
+                chain_data["gas_price"] = to_wei(chain_data["gas_price"], "gwei")
+            if "max_fee_per_gas" in chain_data:
+                chain_data["max_fee_per_gas"] = to_wei(chain_data["max_fee_per_gas"], "gwei")
+            if "max_priority_fee_per_gas" in chain_data:
+                chain_data["max_priority_fee_per_gas"] = to_wei(chain_data["max_priority_fee_per_gas"], "gwei")
+            chain = Chain(**chain_data, is_testnet=is_testnet, **chain_kwargs)
+            if ensure_chain_id and chain.chain_id == chain_id or not ensure_chain_id:
+                chains[chain_id] = chain
+    return chains, minimal_balances
