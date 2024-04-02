@@ -1,5 +1,7 @@
-"""More about MulticallV3: https://github.com/mds1/multicall
 """
+More about MulticallV3: https://github.com/mds1/multicall
+"""
+
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -9,18 +11,11 @@ from eth_typing import BlockIdentifier, BlockNumber, ChecksumAddress
 from hexbytes import HexBytes
 from web3._utils.abi import map_abi_data
 from web3._utils.normalizers import BASE_RETURN_NORMALIZERS
-from web3.contract.async_contract import AsyncContract, AsyncContractFunction
+from web3.contract.async_contract import AsyncContractFunction
 from web3.exceptions import ContractLogicError
 
 from ._abi import MULTICALL_V3_ABI
-from .contract import Contract
-
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from ..chain import Chain
-
-
-MULTICALL_V3_CONTRACT_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11"
+from ..contract import Contract
 
 
 @dataclass
@@ -40,15 +35,8 @@ class MulticallFailed(Exception):
 
 
 class Multicall(Contract):
-    def __init__(
-        self,
-        chain: "Chain",
-        address: ChecksumAddress | str = None,
-        abi=None,
-    ):
-        address = address or MULTICALL_V3_CONTRACT_ADDRESS
-        abi = abi or MULTICALL_V3_ABI
-        super().__init__(chain, address, abi)
+    DEFAULT_ABI = MULTICALL_V3_ABI
+    DEFAULT_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11"
 
     @staticmethod
     def _build_payload(
@@ -71,28 +59,23 @@ class Multicall(Contract):
 
     @staticmethod
     def _decode_data(output_type: Sequence[str], data: bytes) -> Any | None:
-        """
+        if not data:
+            return
 
-        :param output_type:
-        :param data:
-        :return:
-        :raises: DecodingError
-        """
-        if data:
-            try:
-                decoded_values = eth_abi.decode(output_type, data)
-                normalized_data = map_abi_data(
-                    BASE_RETURN_NORMALIZERS, output_type, decoded_values
-                )
-                if len(normalized_data) == 1:
-                    return normalized_data[0]
-                else:
-                    return normalized_data
-            except DecodingError:
-                print(
-                    "Cannot decode %s using output-type %s", data, output_type
-                )
-                return data
+        try:
+            decoded_values = eth_abi.decode(output_type, data)
+            normalized_data = map_abi_data(
+                BASE_RETURN_NORMALIZERS, output_type, decoded_values
+            )
+            if len(normalized_data) == 1:
+                return normalized_data[0]
+            else:
+                return normalized_data
+        except DecodingError:
+            print(
+                "Cannot decode %s using output-type %s", data, output_type
+            )
+            return data
 
     async def _aggregate(
         self,

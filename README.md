@@ -9,9 +9,5 @@ pip install better-web3
 ```
 
 More libraries of the family:
+- [tweepy-self](https://github.com/alenkimov/tweepy-self)
 - [better-proxy](https://github.com/alenkimov/better_proxy)
-- [better-automation](https://github.com/alenkimov/better_automation)
-
-## Credits
-- [safe-global](https://github.com/safe-global) / [Safe-eth-py (previosly known as Gnosis-py)](https://github.com/safe-global/safe-eth-py)
-- [Whynot63](https://github.com/Whynot63) / [web3-premium](https://github.com/Whynot63/web3-premium)

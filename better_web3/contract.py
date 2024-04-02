@@ -1,24 +1,31 @@
 from typing import TYPE_CHECKING
 
-from eth_typing import ChecksumAddress
-from eth_utils import to_checksum_address
+from eth_typing import Address, ChecksumAddress
+from web3.types import ENS, ABI
 from web3 import Web3
 from web3.contract.async_contract import (
     AsyncContract,
     AsyncContractFunctions,
     AsyncContractEvents,
 )
-from web3.types import ABI
 
 if TYPE_CHECKING:
-    from ..chain import Chain
+    from .chain import Chain
 
 
 class Contract:
-    def __init__(self, chain: "Chain", address: ChecksumAddress | str, abi):
-        if isinstance(address, str):
-            address = to_checksum_address(address)
+    DEFAULT_ABI = None
+    DEFAULT_ADDRESS = None
+
+    def __init__(
+            self,
+            chain: "Chain",
+            address: Address | ChecksumAddress | ENS = None,
+            abi: ABI | str = None,
+    ):
         self._chain = chain
+        abi = abi or self.DEFAULT_ABI
+        address = address or self.DEFAULT_ADDRESS
         self._contract: AsyncContract = self._chain.w3.eth.contract(address, abi=abi)
 
     def __str__(self):

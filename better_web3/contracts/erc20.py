@@ -1,25 +1,15 @@
 from functools import cached_property
-from typing import TYPE_CHECKING, Iterable
+from typing import Iterable
 
 from eth_typing import ChecksumAddress, BlockIdentifier
 from web3.types import Wei
 
 from ._abi import ERC20_ABI
-from .contract import Contract
-
-if TYPE_CHECKING:
-    from ..chain import Chain
+from ..contract import Contract
 
 
 class ERC20(Contract):
-    def __init__(
-            self,
-            chain: "Chain",
-            address: ChecksumAddress | str,
-            abi=None,
-    ):
-        abi = abi or ERC20_ABI
-        super().__init__(chain, address, abi)
+    DEFAULT_ABI = ERC20_ABI
 
     @cached_property
     async def name(self) -> str:

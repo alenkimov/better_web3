@@ -1,25 +1,15 @@
 from functools import cached_property
-from typing import TYPE_CHECKING, Iterable
+from typing import Iterable
 
 from eth_typing import ChecksumAddress, BlockIdentifier
 from eth_utils import to_checksum_address
 
 from ._abi import ERC721_ABI
-from .contract import Contract
-
-if TYPE_CHECKING:
-    from ..chain import Chain
+from ..contract import Contract
 
 
 class ERC721(Contract):
-    def __init__(
-            self,
-            chain: "Chain",
-            address: ChecksumAddress | str,
-            abi=None,
-    ):
-        abi = abi or ERC721_ABI
-        super().__init__(chain, address, abi)
+    DEFAULT_ABI = ERC721_ABI
 
     @cached_property
     def name(self) -> str:

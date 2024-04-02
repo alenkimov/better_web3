@@ -1,13 +1,13 @@
 import asyncio
-from dataclasses import dataclass
 
+from better_proxy import Proxy
 from eth_account.signers.local import LocalAccount
 from eth_typing import BlockNumber, ChecksumAddress, HexStr, Address, Hash32
 from eth_utils import to_wei
 from hexbytes import HexBytes
-from web3 import AsyncWeb3
+from web3 import AsyncWeb3, AsyncHTTPProvider
 from web3.contract.async_contract import AsyncContractFunction
-from web3.middleware import async_geth_poa_middleware, async_simple_cache_middleware
+from web3.middleware import ExtraDataToPOAMiddleware
 from web3.types import (
     BlockData,
     BlockIdentifier,
@@ -18,16 +18,11 @@ from web3.types import (
     Wei,
 )
 
-from .provider import CustomAsyncHTTPProvider
 from .batch_call import BatchCallManager
-from .contract import Contract, Multicall, Disperse, ERC20, ERC721
-from .utils import link_by_tx_hash
-
-
-@dataclass
-class NativeToken:
-    symbol: str = "ETH"
-    decimals: int = 18
+from .contract import Contract
+from .contracts import Multicall, Disperse, ERC20, ERC721
+from .utils import tx_url, tx_hash_info, tx_receipt_info
+from .models import Explorer, NativeCurrency
 
 
 class Chain:
@@ -35,50 +30,52 @@ class Chain:
             self,
             rpc: str,
             *,
-            name: str = "EVM Chain",
-            is_testnet: bool = False,
-            use_eip1559: bool = True,
-            # Proxy
-            proxy: str = None,
-            # Native token
-            symbol: str = "ETH",
-            decimals: int = 18,
-            # Explorer
-            explorer_url: str = None,
+            explorers: list[Explorer] = None,
+            name: str = None,
+            short_name: str = None,
+            title: str = None,
+            info_url: str = None,
+            native_currency: NativeCurrency = None,
             # Connection settings
             provider_timeout: int = 15,
-            # Middlewares
-            use_poa_middleware: bool = True,
-            use_cache_middleware: bool = True,
-            # Multicall
+            proxy: str | Proxy = None,
+            # Contracts
             multicall_v3_contract_address: ChecksumAddress | str = None,
-            # Disperse
             disperse_contract_address: ChecksumAddress | str = None,
             # Batch request
             batch_request_size: int = 10,
             batch_request_delay: int = 1,
             # Tx params
+            fee_unit: str = "gwei",
             # legacy pricing
             gas_price: Wei | int = None,
             # dynamic fee pricing
             max_fee_per_gas: Wei | int = None,
             max_priority_fee_per_gas: Wei | int = None,
+            # Features
+            eip1559: bool = False,
+            # Middleware
+            use_poa_middleware: bool = True,
     ):
-        self._rpc = rpc
-        self.name = name
-        self.is_testnet = is_testnet
-        self.token = NativeToken(symbol=symbol, decimals=decimals)
-        self.explorer_url = explorer_url
-        self.use_eip1559 = use_eip1559
+        self.explorers = explorers
 
-        self.w3_provider = CustomAsyncHTTPProvider(self._rpc, proxy=proxy, request_kwargs={"timeout": provider_timeout})
-        self.w3 = AsyncWeb3(provider=self.w3_provider)
+        self.name = name
+        self.short_name = short_name
+        self.title = title
+        self.info_url = info_url
+        self.native_currency = native_currency or NativeCurrency()
+
+        self.eip1559 = eip1559
+
+        http_provider = AsyncHTTPProvider(
+            rpc,
+            request_kwargs={"timeout": provider_timeout},
+        )
+        http_provider.cache_allowed_requests = True
+        self.w3 = AsyncWeb3(provider=http_provider)
 
         if use_poa_middleware:
-            self.w3.middleware_onion.inject(async_geth_poa_middleware, layer=0)
-
-        if use_cache_middleware:
-            self.w3.middleware_onion.add(async_simple_cache_middleware)
+            self.w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
 
         self.multicall = Multicall(chain=self, address=multicall_v3_contract_address)
         self.disperse = Disperse(chain=self, address=disperse_contract_address)
@@ -86,9 +83,12 @@ class Chain:
         self.batch_request = BatchCallManager(
             self, batch_request_size, batch_request_delay)
 
-        self.default_gas_price = gas_price
-        self.default_max_fee_per_gas = max_fee_per_gas
-        self.default_max_priority_fee_per_gas = max_priority_fee_per_gas
+        self.default_gas_price = to_wei(gas_price, fee_unit) if gas_price else None
+        self.default_max_fee_per_gas = to_wei(max_fee_per_gas, fee_unit) if gas_price else None
+        self.default_max_priority_fee_per_gas = to_wei(max_priority_fee_per_gas, fee_unit) if gas_price else None
+
+        self._proxy = None
+        self.proxy = proxy
 
     def __str__(self):
         return f"{self.name}"
@@ -97,16 +97,70 @@ class Chain:
         return f"{self.__class__.__name__}(rpc={self.rpc}, name={self.name})"
 
     @property
-    def rpc(self):
-        return self._rpc
+    def provider(self) -> AsyncHTTPProvider:
+        return self.w3.provider
 
-    def get_link_by_tx_hash(self, tx_hash: HexBytes | HexStr | str):
-        if self.explorer_url is None:
-            raise ValueError("Set explorer_url before using this method")
+    @provider.setter
+    def provider(self, provider: AsyncHTTPProvider):
+        self.w3.provider = provider
+
+    @property
+    def rpc(self):
+        return self.provider.endpoint_uri
+
+    @property
+    def proxy(self) -> Proxy | None:
+        return self._proxy
+
+    @proxy.setter
+    def proxy(self, proxy: str | Proxy | None):
+        if proxy is None:
+            self._proxy = None
+            if "proxies" in self.provider._request_kwargs:
+                del self.provider._request_kwargs["proxies"]
+            return
+
+        if isinstance(proxy, str):
+            self._proxy = Proxy.from_str(proxy)
+
+        self.provider._request_kwargs["proxies"] = {"http": self._proxy.as_url, "https": self._proxy.as_url}
+
+    ################################################################################
+    # Tx info shortcuts
+    ################################################################################
+
+    def tx_url(
+            self,
+            tx_hash: HexBytes | HexStr | str,
+            explorer_name: str = None,
+    ):
+        if not self.explorers:
+            raise ValueError("No explorers")
+
+        target_explorer = None
+
+        if explorer_name:
+            for explorer in self.explorers:
+                if explorer.name == explorer_name:
+                    target_explorer = explorer
+                    break
+
+            if not target_explorer:
+                raise ValueError("No explorer with this name")
+
+        else:
+            target_explorer = self.explorers[0]
 
         if isinstance(tx_hash, HexBytes):
             tx_hash = tx_hash.hex()
-        return link_by_tx_hash(self.explorer_url, tx_hash)
+
+        return tx_url(target_explorer.url, tx_hash)
+
+    def tx_hash_info(self, address: str, tx_hash: HexStr | str, value: Wei | int = None) -> str:
+        return tx_hash_info(self, address, tx_hash, value)
+
+    def tx_receipt_info(self, address: str, tx_receipt: TxReceipt, value: Wei | int = None) -> str:
+        return tx_receipt_info(self, address, tx_receipt, value)
 
     ################################################################################
     # Contract creation shortcuts
@@ -164,7 +218,7 @@ class Chain:
             self,
             tx_hash: Hash32 | HexBytes | HexStr,
             timeout: float = 120,
-            poll_latency: float = 0.1
+            poll_latency: float = 0.1,
     ) -> TxReceipt:
         """
         raises: TimeExhausted:
@@ -174,21 +228,21 @@ class Chain:
         """
         tx_receipt = await self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout, poll_latency)
 
-        # Add extra sleep to let tx propogate correctly
+        # Add extra sleep to let tx propagate correctly
         await asyncio.sleep(1)
         return tx_receipt
 
     async def get_block(
             self,
             block_identifier: BlockIdentifier,
-            full_transactions: bool = False
+            full_transactions: bool = False,
     ) -> BlockData:
         return await self.w3.eth.get_block(block_identifier, full_transactions=full_transactions)
 
     async def check_tx_with_confirmations(
             self,
             tx_hash: Hash32 | HexBytes | HexStr,
-            confirmations: int
+            confirmations: int,
     ) -> bool:
         tx_receipt = await self.get_tx_receipt(tx_hash)
 
@@ -294,7 +348,7 @@ class Chain:
         max_priority_fee_per_gas = max_priority_fee_per_gas or self.default_max_priority_fee_per_gas
 
         if (self.is_eip1559_supported and
-                ((gas_price is None and self.use_eip1559)
+                ((gas_price is None and self.eip1559)
                  or max_fee_per_gas is not None
                  or max_priority_fee_per_gas is not None)):
             tx_params["maxFeePerGas"] = max_fee_per_gas or await self.request_gas_price()
@@ -357,24 +411,3 @@ class Chain:
         )
         tx_hash = await self.sign_and_send_tx(account, tx)
         return tx_hash
-
-
-def load_chains(chains_data: dict, ensure_chain_id=False, **chain_kwargs) -> dict[int: Chain]:
-    chains: dict[int: Chain] = {}
-    minimal_balances: dict[int: Wei] = {}
-    for net_mode, id_to_chain_data in chains_data.items():
-        is_testnet = True if net_mode == "testnet" else False
-        for chain_id, chain_data in id_to_chain_data.items():
-            chain_id = int(chain_id)
-            if "minimal_balance" in chain_data:
-                minimal_balances[chain_id] = to_wei(chain_data.pop("minimal_balance"), "ether")
-            if "gas_price" in chain_data:
-                chain_data["gas_price"] = to_wei(chain_data["gas_price"], "gwei")
-            if "max_fee_per_gas" in chain_data:
-                chain_data["max_fee_per_gas"] = to_wei(chain_data["max_fee_per_gas"], "gwei")
-            if "max_priority_fee_per_gas" in chain_data:
-                chain_data["max_priority_fee_per_gas"] = to_wei(chain_data["max_priority_fee_per_gas"], "gwei")
-            chain = Chain(**chain_data, is_testnet=is_testnet, **chain_kwargs)
-            if ensure_chain_id and chain.chain_id == chain_id or not ensure_chain_id:
-                chains[chain_id] = chain
-    return chains, minimal_balances
