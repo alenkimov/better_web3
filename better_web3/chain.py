@@ -129,32 +129,18 @@ class Chain:
     # Tx info shortcuts
     ################################################################################
 
-    def tx_url(
-            self,
-            tx_hash: HexBytes | HexStr | str,
-            explorer_name: str = None,
-    ):
+    def tx_urls(
+            self, tx_hash: HexBytes | HexStr | str,
+    ) -> dict[str: str]:  # dict[explorer_name: url]
         if not self.explorers:
             raise ValueError("No explorers")
-
-        target_explorer = None
-
-        if explorer_name:
-            for explorer in self.explorers:
-                if explorer.name == explorer_name:
-                    target_explorer = explorer
-                    break
-
-            if not target_explorer:
-                raise ValueError("No explorer with this name")
-
-        else:
-            target_explorer = self.explorers[0]
 
         if isinstance(tx_hash, HexBytes):
             tx_hash = tx_hash.hex()
 
-        return tx_url(target_explorer.url, tx_hash)
+        urls = {}
+        for explorer in self.explorers:
+            urls[explorer.name] = tx_url(explorer.url, tx_hash)
 
     def tx_hash_info(self, address: str, tx_hash: HexStr | str, value: Wei | int = None) -> str:
         return tx_hash_info(self, address, tx_hash, value)
