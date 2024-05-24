@@ -386,6 +386,6 @@ class Chain:
             account: LocalAccount,
             fn: AsyncContractFunction,
             **kwargs,
-    ) -> HexStr | TxReceipt:
+    ) -> HexStr:
         tx = await self.build_tx(fn, address_from=account.address, **kwargs)
         return await self.sign_and_send_tx(account, tx)
