@@ -94,7 +94,7 @@ class BatchCallManager(Manager):
     def __init__(
             self,
             chain: "Chain",
-            batch_request_size: int = 500,
+            batch_request_size: int = 10,
             batch_request_delay: int = 1,
     ):
         super().__init__(chain)
@@ -179,10 +179,10 @@ class BatchCallManager(Manager):
 
     async def balances(
             self,
-            addresses: Iterable[ChecksumAddress | str],
+            addresses: Iterable[ChecksumAddress],
             block_identifier: BlockIdentifier = "latest",
             **kwargs,
-    ) -> AsyncIterable[dict[str: ChecksumAddress | str, str: Wei | JSONRPCException]]:
+    ) -> AsyncIterable[dict[ChecksumAddress: Wei | JSONRPCException]]:
         if not addresses:
             return
 
@@ -191,18 +191,16 @@ class BatchCallManager(Manager):
         balances = [balance async for balance in self.request(payloads, **kwargs)]
 
         for address, response in zip(addresses, balances):
-            balance_data = {"address": address}
             if "exception" in response:
-                balance_data["exception"] = response["exception"]
+                yield {address: response["exception"]}
             else:
-                balance_data["balance"] = Wei(int(response["result"], 16))
-            yield balance_data
+                yield {address: Wei(int(response["result"], 16))}
 
     async def txs(
             self,
             tx_hashes: Iterable[Hash32 | HexBytes | HexStr],
             **kwargs,
-    ) -> AsyncIterable[dict[str: Hash32 | HexBytes | HexStr, str: TxData | JSONRPCException]]:
+    ) -> AsyncIterable[dict[Hash32 | HexBytes | HexStr: TxData | JSONRPCException]]:
         if not tx_hashes:
             return
 
@@ -211,18 +209,16 @@ class BatchCallManager(Manager):
         txs = [tx async for tx in self.request(payloads, **kwargs)]
 
         for tx_hash, response in zip(tx_hashes, txs):
-            tx_data = {"tx_hash": tx_hash}
             if "exception" in response:
-                tx_data["exception"] = response["exception"]
+                yield {tx_hash: response["exception"]}
             else:
-                tx_data["tx"] = transaction_result_formatter(response["result"])
-            yield tx_data
+                yield {tx_hash: transaction_result_formatter(response["result"])}
 
     async def tx_receipts(
             self,
             tx_hashes: Iterable[Hash32 | HexBytes | HexStr],
             **kwargs,
-    ) -> AsyncIterable[dict[str: Hash32 | HexBytes | HexStr, str: TxReceipt | JSONRPCException]]:
+    ) -> AsyncIterable[dict[Hash32 | HexBytes | HexStr: TxReceipt | JSONRPCException]]:
         if not tx_hashes:
             return
 
@@ -231,19 +227,17 @@ class BatchCallManager(Manager):
         tx_receipts = [tx_receipt async for tx_receipt in self.request(payloads, **kwargs)]
 
         for tx_hash, response in zip(tx_hashes, tx_receipts):
-            tx_receipt_data = {"tx_hash": tx_hash}
             if "exception" in response:
-                tx_receipt_data["exception"] = response["exception"]
+                yield {tx_hash: response["exception"]}
             else:
-                tx_receipt_data["tx"] = receipt_formatter(response["result"])
-            yield tx_receipt_data
+                yield {tx_hash: receipt_formatter(response["result"])}
 
     async def blocks(
             self,
             block_identifiers: Iterable[BlockIdentifier],
             full_transactions: bool = False,
             **kwargs,
-    ) -> AsyncIterable[dict[str: BlockIdentifier, str: BlockData | None | JSONRPCException]]:
+    ) -> AsyncIterable[dict[BlockIdentifier: BlockData | None | JSONRPCException]]:
         if not block_identifiers:
             return
 
@@ -257,11 +251,9 @@ class BatchCallManager(Manager):
         blocks_data = [block_data async for block_data in self.request(payloads, **kwargs)]
 
         for block_identifier, response in zip(block_identifiers, blocks_data):
-            block_data = {"block_identifier": block_identifier}
             if "exception" in response:
-                block_data["exception"] = response["exception"]
+                yield {block_identifier: response["exception"]}
             else:
-                if "extraData" in response["exception"]:
-                    del block_data["extraData"]  # Remove extraData, raises some problems on parsing
-                block_data["block"] = receipt_formatter(block_formatter(response["result"]))
-            yield block_data
+                if "extraData" in response["result"]:
+                    del response["result"]["extraData"]  # Remove extraData, raises some problems on parsing
+                yield {block_identifier: receipt_formatter(block_formatter(response["result"]))}
