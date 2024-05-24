@@ -332,9 +332,7 @@ class Chain:
 
     async def _build_tx_fee_params(
             self,
-            # legacy pricing
             gas_price: Wei | int = None,
-            # dynamic fee pricing
             max_fee_per_gas: Wei | int = None,
             max_priority_fee_per_gas: Wei | int = None,
             *,
@@ -366,9 +364,7 @@ class Chain:
             address_to: Address | ChecksumAddress | str = None,
             nonce: Nonce | int = None,
             value: Wei | int = None,
-            # legacy pricing
             gas_price: Wei | int = None,
-            # dynamic fee pricing
             max_fee_per_gas: Wei | int = None,
             max_priority_fee_per_gas: Wei | int = None,
     ) -> TxParams:
@@ -389,25 +385,7 @@ class Chain:
             self,
             account: LocalAccount,
             fn: AsyncContractFunction,
-            *,
-            gas: int = None,
-            nonce: Nonce | int = None,
-            value: Wei | int = None,
-            # legacy pricing
-            gas_price: Wei | int = None,
-            # dynamic fee pricing
-            max_fee_per_gas: Wei | int = None,
-            max_priority_fee_per_gas: Wei | int = None,
-    ) -> HexStr:
-        tx = await self.build_tx(
-            fn,
-            address_from=account.address,
-            gas=gas,
-            nonce=nonce,
-            value=value,
-            gas_price=gas_price,
-            max_fee_per_gas=max_fee_per_gas,
-            max_priority_fee_per_gas=max_priority_fee_per_gas,
-        )
-        tx_hash = await self.sign_and_send_tx(account, tx)
-        return tx_hash
+            **kwargs,
+    ) -> HexStr | TxReceipt:
+        tx = await self.build_tx(fn, address_from=account.address, **kwargs)
+        return await self.sign_and_send_tx(account, tx)
