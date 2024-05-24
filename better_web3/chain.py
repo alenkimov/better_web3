@@ -1,4 +1,5 @@
 import asyncio
+from typing import Iterable, AsyncIterable
 
 from better_proxy import Proxy
 from eth_account.signers.local import LocalAccount
@@ -18,7 +19,6 @@ from web3.types import (
     Wei,
 )
 
-from .batch_call import BatchCallManager
 from .contract import Contract
 from .contracts import Multicall, Disperse, ERC20, ERC721
 from .utils import tx_url, tx_hash_info, tx_receipt_info
@@ -80,9 +80,6 @@ class Chain:
         self.multicall = Multicall(chain=self, address=multicall_v3_contract_address)
         self.disperse = Disperse(chain=self, address=disperse_contract_address)
 
-        self.batch_request = BatchCallManager(
-            self, batch_request_size, batch_request_delay)
-
         self.default_gas_price = to_wei(gas_price, fee_unit) if gas_price else None
         self.default_max_fee_per_gas = to_wei(max_fee_per_gas, fee_unit) if gas_price else None
         self.default_max_priority_fee_per_gas = to_wei(max_priority_fee_per_gas, fee_unit) if gas_price else None
@@ -123,7 +120,7 @@ class Chain:
         if isinstance(proxy, str):
             self._proxy = Proxy.from_str(proxy)
 
-        self.provider._request_kwargs["proxies"] = {"http": self._proxy.as_url, "https": self._proxy.as_url}
+        self.provider._request_kwargs["proxies"] = self._proxy.as_proxies_dict
 
     ################################################################################
     # Tx info shortcuts
@@ -375,3 +372,18 @@ class Chain:
     ) -> HexStr:
         tx = await self.build_tx(fn, address_from=account.address, **kwargs)
         return await self.sign_and_send_tx(account, tx)
+
+    ################################################################################
+    # Batch request shortcuts
+    ################################################################################
+
+    async def balances(
+            self,
+            addresses: Iterable[ChecksumAddress],
+            block_identifier: BlockIdentifier = "latest",
+    ):
+        async with self.w3.batch_requests() as batch:
+            for address in addresses:
+                batch.add(self.w3.eth.get_balance(address, block_identifier))
+
+            return await batch.async_execute()
