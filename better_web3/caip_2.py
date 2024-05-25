@@ -45,11 +45,9 @@ def _chain_from_caip_2_data(
 
 
 def get_chain(chain_id: int, **chain_kwargs) -> Chain:
-    chains_caip2_data = request_chains_caip_2_data()
-    chain_caip2_data = chains_caip2_data[chain_id]
-
+    chain_caip2_data = request_chains_caip_2_data()[chain_id]
     if "rpc" in chain_kwargs:
-        chains_caip2_data.rpc_list.insert(0, chain_kwargs.pop("rpc"))
+        chain_caip2_data.rpc_list.insert(0, chain_kwargs.pop("rpc"))
 
     return _chain_from_caip_2_data(chain_caip2_data, **chain_kwargs)
 
