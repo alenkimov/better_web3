@@ -111,9 +111,7 @@ class Chain(AsyncWeb3):
         if isinstance(tx_hash, HexBytes):
             tx_hash = tx_hash.hex()
 
-        urls = {}
-        for explorer in self.explorers:
-            urls[explorer.name] = tx_url(explorer.url, tx_hash)
+        return {explorer.name: tx_url(explorer.url, tx_hash) for explorer in self.explorers}
 
     async def is_eip1559_supported(self) -> bool:
         """
