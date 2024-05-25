@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "better-web3"
-version = "4.0.0.b4"
+version = "4.0.0.b5"
 description = "Web3 stuff"
 authors = ["Alen <alen.kimov@gmail.com>"]
 readme = "README.md"
