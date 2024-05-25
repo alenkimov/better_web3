@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from typing import Iterable
 
 
 def load_lines(filepath: Path | str) -> list[str]:
