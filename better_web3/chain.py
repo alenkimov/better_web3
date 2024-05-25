@@ -221,7 +221,7 @@ class Chain(AsyncWeb3):
 
     async def sign_and_send_tx(self, account: LocalAccount, tx: TxParams) -> HexStr:
         signed_tx = account.sign_transaction(tx)
-        tx_hash = await self.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = await self.eth.send_raw_transaction(signed_tx.raw_transaction)
         return HexStr(tx_hash.hex())
 
     async def execute_fn(
