@@ -93,14 +93,14 @@ class Chain(AsyncWeb3):
     def proxy(self, proxy: str | Proxy | None):
         if proxy is None:
             self._proxy = None
-            if "proxies" in self.provider._request_kwargs:
-                del self.provider._request_kwargs["proxies"]
+            if "proxy" in self.provider._request_kwargs:
+                del self.provider._request_kwargs["proxy"]
             return
 
         if isinstance(proxy, str):
             self._proxy = Proxy.from_str(proxy)
 
-        self.provider._request_kwargs["proxies"] = self._proxy.as_proxies_dict
+        self.provider._request_kwargs["proxy"] = self._proxy.as_url
 
     def tx_urls(
             self, tx_hash: HexBytes | HexStr | str,
