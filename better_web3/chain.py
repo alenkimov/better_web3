@@ -1,5 +1,5 @@
 import asyncio
-from typing import Iterable
+from typing import Iterable, AsyncGenerator
 
 from better_proxy import Proxy
 from eth_account.signers.local import LocalAccount
@@ -278,18 +278,16 @@ class Chain(AsyncWeb3):
             block_identifier: BlockIdentifier = "latest",
             batch_size: int = None,
             delay: int = None,
-    ):
+    ) -> AsyncGenerator[tuple[ChecksumAddress, Wei], None]:
         batch_size = batch_size or self.default_batch_request_size
         delay = delay or self.default_batch_request_delay
 
         addresses = list(addresses)
-        results = []
 
         for i in range(0, len(addresses), batch_size):
             batch_addresses = addresses[i:i + batch_size]
-            batch_results = await self._balances(batch_addresses, block_identifier)
-            results.extend(batch_results)
+            for address, balance in zip(batch_addresses, await self._balances(batch_addresses, block_identifier)):
+                yield address, Wei(balance)
+
             if delay > 0 and i + batch_size < len(addresses):
                 await asyncio.sleep(delay)
-
-        return results
