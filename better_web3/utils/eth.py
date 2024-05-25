@@ -1,5 +1,3 @@
-from typing import TYPE_CHECKING
-
 from eth_account.messages import encode_defunct
 from eth_account.account import LocalAccount
 from eth_typing import HexStr
