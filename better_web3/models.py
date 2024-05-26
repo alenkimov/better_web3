@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from eth_typing import HexStr
 
 
 class Explorer(BaseModel):
@@ -6,6 +7,9 @@ class Explorer(BaseModel):
     url: str
     standard: str
     # icon: str | None = None
+
+    def tx_url(self, tx_hash: HexStr | str):
+        return f"{self.url}/tx/0x{tx_hash}"
 
 
 class NativeCurrency(BaseModel):

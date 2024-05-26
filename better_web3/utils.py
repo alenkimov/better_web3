@@ -3,11 +3,7 @@ from eth_account.account import LocalAccount
 from eth_typing import HexStr
 
 
-def sign_message(message: str, account: LocalAccount) -> str:
+def sign_message(account: LocalAccount, message: str) -> HexStr:
     message = encode_defunct(text=message)
     signed_message = account.sign_message(message)
-    return signed_message.signature.hex()
-
-
-def tx_url(explorer_url: str, tx_hash: HexStr | str):
-    return f"{explorer_url}/tx/{tx_hash}"
+    return HexStr(signed_message.signature.hex())
