@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "better-web3"
-version = "4.0.0.b10"
+version = "4.1.0"
 description = "Web3 stuff"
 authors = ["Alen <alen.kimov@gmail.com>"]
 readme = "README.md"
@@ -10,7 +10,8 @@ packages = [{include = "better_web3"}]
 [tool.poetry.dependencies]
 python = "^3.8"
 better-proxy = "^1.2"
-web3 = {version="^7.0.0b6", allow-prereleases=true}
+pydantic     = "^2"
+web3         = "^7.9"
 
 [tool.poetry.group.dev.dependencies]
 setuptools = "^69"
